@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "apple-numbers": {
+      "command": "node",
+      "args": ["build/index.js"]
+    }
+  }
+}

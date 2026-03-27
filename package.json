@@ -1,0 +1,44 @@
+{
+  "name": "apple-numbers-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for reading Apple Numbers (.numbers) spreadsheet files",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "start": "node build/index.js",
+    "dev": "tsc --watch",
+    "lint": "eslint src",
+    "format": "prettier --write src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "husky"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.4.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "tsc-alias": "^1.8.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}
