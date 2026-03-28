@@ -5,3 +5,13 @@ build/
 .env
 .DS_Store
 coverage/
+
+# Python venv
+venv/
+
+# Vitest temp files
+vitest.config.ts.timestamp-*
+
+# Test fixtures (generated, not committed)
+test/fixtures/*.numbers
+test/fixtures/_test_*

@@ -1,21 +1,37 @@
 import { execSync, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Resolve path to the Python helper script
-// In build: build/utils/python.js -> need to find src/utils/numbers_reader.py
-// We ship the .py alongside the build, so look relative to project root
-function getScriptPath(): string {
+function getProjectRoot(): string {
   // Walk up from build/utils/ or src/utils/ to project root
-  const projectRoot = join(__dirname, '..', '..');
-  return join(projectRoot, 'src', 'utils', 'numbers_reader.py');
+  return join(__dirname, '..', '..');
 }
 
+// Resolve path to the Python helper script
+function getScriptPath(): string {
+  return join(getProjectRoot(), 'src', 'utils', 'numbers_reader.py');
+}
+
+/**
+ * Find the best Python executable. Preference order:
+ *   1. Project-local venv (./venv/bin/python3)
+ *   2. System python3
+ *   3. System python
+ */
 function findPython(): string {
-  // Try python3 first (macOS default), then python
+  const projectRoot = getProjectRoot();
+  const venvPython = join(projectRoot, 'venv', 'bin', 'python3');
+
+  // Prefer the project venv — it has numbers-parser installed
+  if (existsSync(venvPython)) {
+    return venvPython;
+  }
+
+  // Fall back to system Python
   for (const cmd of ['python3', 'python']) {
     try {
       execSync(`${cmd} --version`, { stdio: 'pipe' });
@@ -24,7 +40,9 @@ function findPython(): string {
       continue;
     }
   }
-  throw new Error('Python 3 not found. Install Python 3 or ensure python3 is on PATH.');
+  throw new Error(
+    'Python 3 not found. Run "npm run setup" to create a venv, or ensure python3 is on PATH.',
+  );
 }
 
 export interface PythonResult<T = unknown> {
@@ -33,6 +51,11 @@ export interface PythonResult<T = unknown> {
 }
 
 let cachedPython: string | null = null;
+
+/** Reset the cached Python path (useful for testing). */
+export function _resetPythonCache(): void {
+  cachedPython = null;
+}
 
 export function runNumbersReader<T = unknown>(
   command: string,
@@ -64,7 +87,7 @@ export function runNumbersReader<T = unknown>(
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string; status?: number };
     if (error.stderr?.includes('numbers-parser not installed')) {
-      return { error: 'numbers-parser not installed. Run: pip3 install numbers-parser' };
+      return { error: 'numbers-parser not installed. Run: npm run setup' };
     }
     if (error.message?.includes('ETIMEDOUT') || error.message?.includes('timed out')) {
       return { error: `Operation timed out after ${timeoutMs}ms. File may be very large.` };
@@ -76,15 +99,15 @@ export function runNumbersReader<T = unknown>(
 export function checkDependencies(): { ok: boolean; message: string } {
   try {
     const python = cachedPython ?? (cachedPython = findPython());
-    execSync(`${python} -c "import numbers_parser; print(numbers_parser.__version__)"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return { ok: true, message: 'All dependencies available' };
+    const version = execSync(
+      `${python} -c "import numbers_parser; print(numbers_parser.__version__)"`,
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+    ).trim();
+    return { ok: true, message: `All dependencies available (numbers-parser ${version})` };
   } catch {
     return {
       ok: false,
-      message: 'numbers-parser not installed. Run: pip3 install numbers-parser',
+      message: 'numbers-parser not installed. Run: npm run setup',
     };
   }
 }

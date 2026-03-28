@@ -5,6 +5,7 @@
   "type": "module",
   "main": "build/index.js",
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "build": "tsc && tsc-alias",
     "start": "node build/index.js",
     "dev": "tsc --watch",
@@ -26,7 +27,10 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
     "eslint": "^9.0.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
