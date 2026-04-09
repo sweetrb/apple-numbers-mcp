@@ -110,6 +110,20 @@ Python resolution order: the server first looks for `./venv/bin/python3` (projec
 
 This hybrid approach uses the best tool for each layer: TypeScript for the MCP protocol and Python for file format parsing, since `numbers-parser` is the only mature library for reading and writing the proprietary `.numbers` protobuf/IWA format.
 
+## Limitations
+
+Data read/write fidelity is exact — every cell value round-trips perfectly. However, the following are **not currently preserved** when creating or modifying files:
+
+- **Cell formatting** — currency, percentage, decimal places, date display formats
+- **Styling** — fonts, colors, bold/italic, borders, cell backgrounds
+- **Layout** — column widths, row heights, merged cells
+- **Formulas** — readable via `get-cell --verbose`, but writes store computed values only (numbers-parser limitation)
+- **Conditional formatting** — not exposed
+- **Charts and images** — not exposed
+- **Sheet deletion** — not supported by numbers-parser
+
+These are tracked for a future release. The underlying `numbers-parser` library has partial support for styles and formatting via its `Style` API, which provides a path forward for most of these.
+
 ## License
 
 [MIT](LICENSE)
