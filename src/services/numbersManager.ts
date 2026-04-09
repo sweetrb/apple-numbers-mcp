@@ -1,4 +1,10 @@
 import { runNumbersReader, checkDependencies } from "../utils/python.js";
+import {
+  setFormula,
+  setFormulasBatch,
+  type SetFormulaResult,
+  type SetFormulasBatchResult,
+} from "../utils/applescript.js";
 import type {
   NumbersFileInfo,
   TableData,
@@ -346,6 +352,34 @@ export class NumbersManager {
     const result = runNumbersReader<RenameResult>("rename-table", args);
     if (result.error) throw new Error(result.error);
     return result.data!;
+  }
+
+  /**
+   * Set a formula on a cell via AppleScript. Requires Numbers.app to be running.
+   */
+  setCellFormula(
+    filePath: string,
+    sheet: string,
+    table: string,
+    row: number,
+    col: number,
+    formula: string
+  ): SetFormulaResult {
+    const resolved = this.validatePath(filePath);
+    return setFormula(resolved, sheet, table, row, col, formula);
+  }
+
+  /**
+   * Set formulas on multiple cells via AppleScript. Requires Numbers.app to be running.
+   */
+  setCellFormulasBatch(
+    filePath: string,
+    sheet: string,
+    table: string,
+    formulas: { row: number; col: number; formula: string }[]
+  ): SetFormulasBatchResult {
+    const resolved = this.validatePath(filePath);
+    return setFormulasBatch(resolved, sheet, table, formulas);
   }
 
   /**

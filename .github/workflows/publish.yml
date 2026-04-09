@@ -3,17 +3,10 @@ name: Publish to npm
 on:
   release:
     types: [created]
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
 
 jobs:
   publish:
     runs-on: macos-latest
-    if: >
-      (github.event_name == 'release') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
 
     steps:
       - name: Checkout repository

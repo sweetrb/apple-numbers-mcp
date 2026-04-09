@@ -446,6 +446,57 @@ server.tool(
   }, "rename-table")
 );
 
+// set-formula
+server.tool(
+  "set-formula",
+  "Set a formula on a cell in a .numbers file using AppleScript. " +
+    "Requires Numbers.app to be running. The file will be opened if not already open, " +
+    "and saved after the formula is set. Row and column are 0-based indices.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    row: z.number().int().min(0).describe("Row index (0-based)"),
+    col: z.number().int().min(0).describe("Column index (0-based)"),
+    formula: z.string().describe('Formula string (e.g., "=SUM(A2:A10)")'),
+  },
+  withErrorHandling(({ path, sheet, table, row, col, formula }) => {
+    const result = manager.setCellFormula(path, sheet, table, row, col, formula);
+    return textResponse(
+      `Set formula on ${result.cell} in "${result.sheetName}/${result.tableName}"\n` +
+        `Formula: ${result.formula}\nComputed value: ${result.computedValue}`
+    );
+  }, "set-formula")
+);
+
+// set-formulas-batch
+server.tool(
+  "set-formulas-batch",
+  "Set formulas on multiple cells in a single operation using AppleScript. " +
+    "Requires Numbers.app to be running. More efficient than multiple set-formula calls.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    formulas: z
+      .array(
+        z.object({
+          row: z.number().int().min(0).describe("Row index (0-based)"),
+          col: z.number().int().min(0).describe("Column index (0-based)"),
+          formula: z.string().describe("Formula string"),
+        })
+      )
+      .min(1)
+      .describe("Array of formula assignments"),
+  },
+  withErrorHandling(({ path, sheet, table, formulas }) => {
+    const result = manager.setCellFormulasBatch(path, sheet, table, formulas);
+    return textResponse(
+      `Set ${result.cellsSet} formulas in "${result.sheetName}/${result.tableName}"`
+    );
+  }, "set-formulas-batch")
+);
+
 // --- Start Server ---
 
 async function main() {

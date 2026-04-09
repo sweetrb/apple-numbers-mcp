@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 — 2026-04-09
+
+### Added
+
+- **Formula support**: set-formula and set-formulas-batch tools for writing formulas via AppleScript (requires Numbers.app)
+- Round-trip fidelity test against real-world spreadsheets
+
+### Fixed
+
+- Header cells now use consistent date formatting (2023-01-01 instead of 2023-01-01 00:00:00)
+- Null headers preserved instead of writing Column_N placeholders
+- Empty rows now properly expand table dimensions in add-rows
+- Publish workflow only triggers on release creation (not every CI push)
+
 ## 0.2.0 — 2026-04-09
 
 ### Added

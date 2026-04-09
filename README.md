@@ -29,6 +29,11 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for r
 - **rename-sheet** — Rename a sheet
 - **rename-table** — Rename a table
 
+### Formulas
+
+- **set-formula** — Set a formula on a cell (e.g., `=SUM(A2:A10)`). Requires Numbers.app to be running.
+- **set-formulas-batch** — Set formulas on multiple cells in one operation
+
 ### Import
 
 - **import-csv** — Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet
@@ -117,7 +122,7 @@ Data read/write fidelity is exact — every cell value round-trips perfectly. Ho
 - **Cell formatting** — currency, percentage, decimal places, date display formats
 - **Styling** — fonts, colors, bold/italic, borders, cell backgrounds
 - **Layout** — column widths, row heights, merged cells
-- **Formulas** — readable via `get-cell --verbose`, but writes store computed values only (numbers-parser limitation)
+- **Formulas** — readable via `get-cell --verbose` and writable via `set-formula` (requires Numbers.app); data write tools (`set-cell`, `add-rows`, etc.) store computed values only
 - **Conditional formatting** — not exposed
 - **Charts and images** — not exposed
 - **Sheet deletion** — not supported by numbers-parser
