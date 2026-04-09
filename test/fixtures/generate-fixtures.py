@@ -22,7 +22,13 @@ FIXTURES_DIR = Path(__file__).parent
 
 def create_basic_fixture():
     """Create a simple spreadsheet with one sheet and one table."""
-    doc = Document()
+    data = [
+        ("Alice", 30, "New York"),
+        ("Bob", 25, "San Francisco"),
+        ("Charlie", 35, "Chicago"),
+        ("Diana", 28, "Seattle"),
+    ]
+    doc = Document(num_rows=1 + len(data), num_cols=3)
     sheet = doc.sheets[0]
     table = sheet.tables[0]
 
@@ -32,12 +38,6 @@ def create_basic_fixture():
     table.write(0, 2, "City")
 
     # Set data rows
-    data = [
-        ("Alice", 30, "New York"),
-        ("Bob", 25, "San Francisco"),
-        ("Charlie", 35, "Chicago"),
-        ("Diana", 28, "Seattle"),
-    ]
     for row_idx, (name, age, city) in enumerate(data, start=1):
         table.write(row_idx, 0, name)
         table.write(row_idx, 1, age)
@@ -50,7 +50,7 @@ def create_basic_fixture():
 
 def create_multisheet_fixture():
     """Create a spreadsheet with multiple sheets and tables."""
-    doc = Document()
+    doc = Document(num_rows=3, num_cols=3)
 
     # Sheet 1: Employees
     sheet1 = doc.sheets[0]
@@ -67,7 +67,7 @@ def create_multisheet_fixture():
     t1.write(2, 2, "Marketing")
 
     # Sheet 2: Revenue
-    doc.add_sheet("Revenue")
+    doc.add_sheet("Revenue", num_rows=3, num_cols=2)
     sheet2 = doc.sheets[1]
     t2 = sheet2.tables[0]
     t2.write(0, 0, "Quarter")
@@ -86,7 +86,7 @@ def create_types_fixture():
     """Create a spreadsheet with various data types."""
     from datetime import datetime, date
 
-    doc = Document()
+    doc = Document(num_rows=6, num_cols=2)
     sheet = doc.sheets[0]
     table = sheet.tables[0]
 

@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read Apple Numbers spreadsheets through natural language - read tables, get cells, search, and export data (macOS only)",
   "author": {
     "name": "Rob Sweet",

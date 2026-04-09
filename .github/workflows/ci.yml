@@ -47,7 +47,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run setup
       - run: ./venv/bin/python3 test/fixtures/generate-fixtures.py
-      - run: npm test
+      - run: npm run test:all
 
   build:
     name: Build
