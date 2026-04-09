@@ -31,8 +31,17 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for r
 
 ### Formulas
 
-- **set-formula** — Set a formula on a cell (e.g., `=SUM(A2:A10)`). Requires Numbers.app to be running.
+- **set-formula** — Set a formula on a cell (e.g., `=SUM(A2:A10)`). Requires Numbers.app.
 - **set-formulas-batch** — Set formulas on multiple cells in one operation
+
+### Formatting (requires Numbers.app)
+
+- **set-cell-style** — Set font, size, colors, number format, alignment on a cell
+- **set-cells-style-batch** — Style multiple cells in one operation
+- **set-column-width** — Set column width in pixels
+- **set-row-height** — Set row height in pixels
+- **merge-cells** — Merge a range of cells
+- **unmerge-cells** — Unmerge a previously merged range
 
 ### Import
 
@@ -119,9 +128,6 @@ This hybrid approach uses the best tool for each layer: TypeScript for the MCP p
 
 Data read/write fidelity is exact — every cell value round-trips perfectly. However, the following are **not currently preserved** when creating or modifying files:
 
-- **Cell formatting** — currency, percentage, decimal places, date display formats
-- **Styling** — fonts, colors, bold/italic, borders, cell backgrounds
-- **Layout** — column widths, row heights, merged cells
 - **Formulas** — readable via `get-cell --verbose` and writable via `set-formula` (requires Numbers.app); data write tools (`set-cell`, `add-rows`, etc.) store computed values only
 - **Conditional formatting** — not exposed
 - **Charts and images** — not exposed

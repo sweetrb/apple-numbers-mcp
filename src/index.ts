@@ -497,6 +497,161 @@ server.tool(
   }, "set-formulas-batch")
 );
 
+// --- Formatting tools (AppleScript, requires Numbers.app) ---
+
+const colorSchema = z.object({
+  red: z.number().int().min(0).max(65535).describe("Red component (0-65535)"),
+  green: z.number().int().min(0).max(65535).describe("Green component (0-65535)"),
+  blue: z.number().int().min(0).max(65535).describe("Blue component (0-65535)"),
+});
+
+const cellStyleSchema = z.object({
+  fontName: z.string().optional().describe('Font name (e.g., "Helvetica-Bold", "HelveticaNeue")'),
+  fontSize: z.number().optional().describe("Font size in points"),
+  textColor: colorSchema.optional().describe("Text color (RGB, 0-65535 per channel)"),
+  backgroundColor: colorSchema.optional().describe("Background color (RGB, 0-65535 per channel)"),
+  format: z
+    .enum([
+      "automatic",
+      "number",
+      "currency",
+      "date and time",
+      "duration",
+      "fraction",
+      "scientific",
+      "numeral system",
+      "checkbox",
+      "star rating",
+      "text",
+    ])
+    .optional()
+    .describe("Cell number format"),
+  alignment: z
+    .enum(["auto align", "left", "center", "right", "justify"])
+    .optional()
+    .describe("Horizontal alignment"),
+  verticalAlignment: z.enum(["top", "center", "bottom"]).optional().describe("Vertical alignment"),
+  textWrap: z.boolean().optional().describe("Enable text wrapping"),
+});
+
+// set-cell-style
+server.tool(
+  "set-cell-style",
+  "Set formatting on a cell: font, color, alignment, number format, etc. " +
+    "Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    row: z.number().int().min(0).describe("Row index (0-based)"),
+    col: z.number().int().min(0).describe("Column index (0-based)"),
+    style: cellStyleSchema.describe("Style properties to set"),
+  },
+  withErrorHandling(({ path, sheet, table, row, col, style }) => {
+    const result = manager.setCellStyle(path, sheet, table, row, col, style);
+    return textResponse(`Styled cell ${result.cell} in "${result.sheetName}/${result.tableName}"`);
+  }, "set-cell-style")
+);
+
+// set-cells-style-batch
+server.tool(
+  "set-cells-style-batch",
+  "Set formatting on multiple cells in one operation. " + "Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    entries: z
+      .array(
+        z.object({
+          row: z.number().int().min(0).describe("Row index (0-based)"),
+          col: z.number().int().min(0).describe("Column index (0-based)"),
+          style: cellStyleSchema,
+        })
+      )
+      .min(1)
+      .describe("Array of cell style assignments"),
+  },
+  withErrorHandling(({ path, sheet, table, entries }) => {
+    const result = manager.setCellsStyleBatch(path, sheet, table, entries);
+    return textResponse(
+      `Styled ${result.cellsStyled} cells in "${result.sheetName}/${result.tableName}"`
+    );
+  }, "set-cells-style-batch")
+);
+
+// set-column-width
+server.tool(
+  "set-column-width",
+  "Set the width of a column in pixels. Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    col: z.number().int().min(0).describe("Column index (0-based)"),
+    width: z.number().min(0).describe("Width in pixels"),
+  },
+  withErrorHandling(({ path, sheet, table, col, width }) => {
+    manager.setColumnWidth(path, sheet, table, col, width);
+    return textResponse(`Set column ${col} width to ${width}px in "${sheet}/${table}"`);
+  }, "set-column-width")
+);
+
+// set-row-height
+server.tool(
+  "set-row-height",
+  "Set the height of a row in pixels. Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    row: z.number().int().min(0).describe("Row index (0-based)"),
+    height: z.number().min(0).describe("Height in pixels"),
+  },
+  withErrorHandling(({ path, sheet, table, row, height }) => {
+    manager.setRowHeight(path, sheet, table, row, height);
+    return textResponse(`Set row ${row} height to ${height}px in "${sheet}/${table}"`);
+  }, "set-row-height")
+);
+
+// merge-cells
+server.tool(
+  "merge-cells",
+  "Merge a range of cells. Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    startRow: z.number().int().min(0).describe("Top-left row (0-based)"),
+    startCol: z.number().int().min(0).describe("Top-left column (0-based)"),
+    endRow: z.number().int().min(0).describe("Bottom-right row (0-based)"),
+    endCol: z.number().int().min(0).describe("Bottom-right column (0-based)"),
+  },
+  withErrorHandling(({ path, sheet, table, startRow, startCol, endRow, endCol }) => {
+    const result = manager.mergeCells(path, sheet, table, startRow, startCol, endRow, endCol);
+    return textResponse(`Merged ${result.range} in "${result.sheetName}/${result.tableName}"`);
+  }, "merge-cells")
+);
+
+// unmerge-cells
+server.tool(
+  "unmerge-cells",
+  "Unmerge a previously merged range of cells. Requires Numbers.app to be running.",
+  {
+    path: z.string().describe("Path to the .numbers file"),
+    sheet: z.string().describe("Sheet name"),
+    table: z.string().describe("Table name"),
+    startRow: z.number().int().min(0).describe("Top-left row (0-based)"),
+    startCol: z.number().int().min(0).describe("Top-left column (0-based)"),
+    endRow: z.number().int().min(0).describe("Bottom-right row (0-based)"),
+    endCol: z.number().int().min(0).describe("Bottom-right column (0-based)"),
+  },
+  withErrorHandling(({ path, sheet, table, startRow, startCol, endRow, endCol }) => {
+    const result = manager.unmergeCells(path, sheet, table, startRow, startCol, endRow, endCol);
+    return textResponse(`Unmerged ${result.range} in "${result.sheetName}/${result.tableName}"`);
+  }, "unmerge-cells")
+);
+
 // --- Start Server ---
 
 async function main() {

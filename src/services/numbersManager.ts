@@ -2,8 +2,20 @@ import { runNumbersReader, checkDependencies } from "../utils/python.js";
 import {
   setFormula,
   setFormulasBatch,
+  setCellStyle,
+  setCellsStyleBatch,
+  setColumnWidth,
+  setRowHeight,
+  mergeCells,
+  unmergeCells,
   type SetFormulaResult,
   type SetFormulasBatchResult,
+  type CellStyle,
+  type CellStyleResult,
+  type BatchStyleEntry,
+  type SetCellsStyleBatchResult,
+  type SetDimensionResult,
+  type MergeResult,
 } from "../utils/applescript.js";
 import type {
   NumbersFileInfo,
@@ -380,6 +392,94 @@ export class NumbersManager {
   ): SetFormulasBatchResult {
     const resolved = this.validatePath(filePath);
     return setFormulasBatch(resolved, sheet, table, formulas);
+  }
+
+  /**
+   * Set cell style via AppleScript. Requires Numbers.app.
+   */
+  setCellStyle(
+    filePath: string,
+    sheet: string,
+    table: string,
+    row: number,
+    col: number,
+    style: CellStyle
+  ): CellStyleResult {
+    const resolved = this.validatePath(filePath);
+    return setCellStyle(resolved, sheet, table, row, col, style);
+  }
+
+  /**
+   * Set styles on multiple cells via AppleScript. Requires Numbers.app.
+   */
+  setCellsStyleBatch(
+    filePath: string,
+    sheet: string,
+    table: string,
+    entries: BatchStyleEntry[]
+  ): SetCellsStyleBatchResult {
+    const resolved = this.validatePath(filePath);
+    return setCellsStyleBatch(resolved, sheet, table, entries);
+  }
+
+  /**
+   * Set column width via AppleScript. Requires Numbers.app.
+   */
+  setColumnWidth(
+    filePath: string,
+    sheet: string,
+    table: string,
+    col: number,
+    width: number
+  ): SetDimensionResult {
+    const resolved = this.validatePath(filePath);
+    return setColumnWidth(resolved, sheet, table, col, width);
+  }
+
+  /**
+   * Set row height via AppleScript. Requires Numbers.app.
+   */
+  setRowHeight(
+    filePath: string,
+    sheet: string,
+    table: string,
+    row: number,
+    height: number
+  ): SetDimensionResult {
+    const resolved = this.validatePath(filePath);
+    return setRowHeight(resolved, sheet, table, row, height);
+  }
+
+  /**
+   * Merge a range of cells via AppleScript. Requires Numbers.app.
+   */
+  mergeCells(
+    filePath: string,
+    sheet: string,
+    table: string,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+  ): MergeResult {
+    const resolved = this.validatePath(filePath);
+    return mergeCells(resolved, sheet, table, startRow, startCol, endRow, endCol);
+  }
+
+  /**
+   * Unmerge a range of cells via AppleScript. Requires Numbers.app.
+   */
+  unmergeCells(
+    filePath: string,
+    sheet: string,
+    table: string,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+  ): MergeResult {
+    const resolved = this.validatePath(filePath);
+    return unmergeCells(resolved, sheet, table, startRow, startCol, endRow, endCol);
   }
 
   /**

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-04-09
+
+### Added
+
+- **Cell styling**: set-cell-style and set-cells-style-batch for font, size, colors, number format, alignment (via AppleScript, requires Numbers.app)
+- **Layout**: set-column-width and set-row-height tools
+- **Cell merging**: merge-cells and unmerge-cells tools
+- Styled round-trip fidelity test (read styles → recreate → compare)
+- getCellStyle utility for reading cell formatting via AppleScript
+
 ## 0.3.0 — 2026-04-09
 
 ### Added
