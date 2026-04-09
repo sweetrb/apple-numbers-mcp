@@ -28,9 +28,18 @@ def cell_to_serializable(cell):
     if isinstance(val, bool):
         return {"value": val, "type": "boolean"}
     elif isinstance(val, (int, float)):
+        # Round floats that are within epsilon of an integer
+        if isinstance(val, float):
+            rounded = round(val)
+            if abs(val - rounded) < 1e-9:
+                val = rounded
         return {"value": val, "type": "number"}
     elif isinstance(val, (datetime, date)):
-        return {"value": val.isoformat(), "type": "date"}
+        iso = val.isoformat()
+        # Strip T00:00:00 from pure dates (no meaningful time component)
+        if isinstance(val, datetime) and val.hour == 0 and val.minute == 0 and val.second == 0 and val.microsecond == 0:
+            iso = val.date().isoformat()
+        return {"value": iso, "type": "date"}
     elif isinstance(val, time):
         return {"value": val.isoformat(), "type": "duration"}
     elif isinstance(val, timedelta):
