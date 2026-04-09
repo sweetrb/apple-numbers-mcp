@@ -21,7 +21,7 @@ export interface CellValue {
   row: number;
   col: number;
   value: string | number | boolean | null;
-  type: 'string' | 'number' | 'boolean' | 'date' | 'duration' | 'empty' | 'error';
+  type: "string" | "number" | "boolean" | "date" | "duration" | "empty" | "error";
   formattedValue?: string;
 }
 
@@ -44,7 +44,7 @@ export interface SearchResult {
 }
 
 export interface ExportOptions {
-  format: 'csv' | 'json' | 'tsv';
+  format: "csv" | "json" | "tsv";
   sheet?: string;
   table?: string;
   outputPath?: string;

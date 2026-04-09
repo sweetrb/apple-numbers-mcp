@@ -1,19 +1,19 @@
-import { execSync, execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { execSync, execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 function getProjectRoot(): string {
   // Walk up from build/utils/ or src/utils/ to project root
-  return join(__dirname, '..', '..');
+  return join(__dirname, "..", "..");
 }
 
 // Resolve path to the Python helper script
 function getScriptPath(): string {
-  return join(getProjectRoot(), 'src', 'utils', 'numbers_reader.py');
+  return join(getProjectRoot(), "src", "utils", "numbers_reader.py");
 }
 
 /**
@@ -24,7 +24,7 @@ function getScriptPath(): string {
  */
 function findPython(): string {
   const projectRoot = getProjectRoot();
-  const venvPython = join(projectRoot, 'venv', 'bin', 'python3');
+  const venvPython = join(projectRoot, "venv", "bin", "python3");
 
   // Prefer the project venv — it has numbers-parser installed
   if (existsSync(venvPython)) {
@@ -32,16 +32,16 @@ function findPython(): string {
   }
 
   // Fall back to system Python
-  for (const cmd of ['python3', 'python']) {
+  for (const cmd of ["python3", "python"]) {
     try {
-      execSync(`${cmd} --version`, { stdio: 'pipe' });
+      execSync(`${cmd} --version`, { stdio: "pipe" });
       return cmd;
     } catch {
       continue;
     }
   }
   throw new Error(
-    'Python 3 not found. Run "npm run setup" to create a venv, or ensure python3 is on PATH.',
+    'Python 3 not found. Run "npm run setup" to create a venv, or ensure python3 is on PATH.'
   );
 }
 
@@ -60,7 +60,7 @@ export function _resetPythonCache(): void {
 export function runNumbersReader<T = unknown>(
   command: string,
   args: string[],
-  timeoutMs = 30000,
+  timeoutMs = 30000
 ): PythonResult<T> {
   const python = cachedPython ?? (cachedPython = findPython());
   const scriptPath = getScriptPath();
@@ -68,15 +68,15 @@ export function runNumbersReader<T = unknown>(
 
   const debug = process.env.DEBUG || process.env.VERBOSE;
   if (debug) {
-    console.error(`[numbers-mcp] ${python} ${fullArgs.join(' ')}`);
+    console.error(`[numbers-mcp] ${python} ${fullArgs.join(" ")}`);
   }
 
   try {
     const stdout = execFileSync(python, fullArgs, {
-      encoding: 'utf-8',
+      encoding: "utf-8",
       timeout: timeoutMs,
       maxBuffer: 50 * 1024 * 1024, // 50MB for large spreadsheets
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     const result = JSON.parse(stdout.trim());
@@ -86,13 +86,13 @@ export function runNumbersReader<T = unknown>(
     return { data: result as T };
   } catch (err: unknown) {
     const error = err as Error & { stderr?: string; status?: number };
-    if (error.stderr?.includes('numbers-parser not installed')) {
-      return { error: 'numbers-parser not installed. Run: npm run setup' };
+    if (error.stderr?.includes("numbers-parser not installed")) {
+      return { error: "numbers-parser not installed. Run: npm run setup" };
     }
-    if (error.message?.includes('ETIMEDOUT') || error.message?.includes('timed out')) {
+    if (error.message?.includes("ETIMEDOUT") || error.message?.includes("timed out")) {
       return { error: `Operation timed out after ${timeoutMs}ms. File may be very large.` };
     }
-    return { error: error.message || 'Unknown error executing Python script' };
+    return { error: error.message || "Unknown error executing Python script" };
   }
 }
 
@@ -101,13 +101,13 @@ export function checkDependencies(): { ok: boolean; message: string } {
     const python = cachedPython ?? (cachedPython = findPython());
     const version = execSync(
       `${python} -c "import numbers_parser; print(numbers_parser.__version__)"`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
     ).trim();
     return { ok: true, message: `All dependencies available (numbers-parser ${version})` };
   } catch {
     return {
       ok: false,
-      message: 'numbers-parser not installed. Run: npm run setup',
+      message: "numbers-parser not installed. Run: npm run setup",
     };
   }
 }

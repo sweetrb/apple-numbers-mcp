@@ -1,27 +1,25 @@
-import { runNumbersReader, checkDependencies } from '../utils/python.js';
+import { runNumbersReader, checkDependencies } from "../utils/python.js";
 import type {
   NumbersFileInfo,
   TableData,
   SearchResult,
   ExportResult,
   CellValue,
-} from '../types.js';
-import { existsSync } from 'node:fs';
-import { resolve, extname } from 'node:path';
-import { homedir } from 'node:os';
+} from "../types.js";
+import { existsSync } from "node:fs";
+import { resolve, extname } from "node:path";
+import { homedir } from "node:os";
 
 export class NumbersManager {
   private validatePath(filePath: string): string {
     // Expand ~ to home directory
-    const expanded = filePath.startsWith('~')
-      ? filePath.replace(/^~/, homedir())
-      : filePath;
+    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
     const resolved = resolve(expanded);
 
     if (!existsSync(resolved)) {
       throw new Error(`File not found: ${resolved}`);
     }
-    if (extname(resolved).toLowerCase() !== '.numbers') {
+    if (extname(resolved).toLowerCase() !== ".numbers") {
       throw new Error(`Not a Numbers file: ${resolved}. Expected .numbers extension.`);
     }
     return resolved;
@@ -32,7 +30,7 @@ export class NumbersManager {
    */
   getFileInfo(filePath: string): NumbersFileInfo {
     const resolved = this.validatePath(filePath);
-    const result = runNumbersReader<NumbersFileInfo>('info', [resolved]);
+    const result = runNumbersReader<NumbersFileInfo>("info", [resolved]);
     if (result.error) throw new Error(result.error);
     return result.data!;
   }
@@ -44,9 +42,9 @@ export class NumbersManager {
   readTable(filePath: string, sheet?: string, table?: string): TableData {
     const resolved = this.validatePath(filePath);
     const args = [resolved];
-    if (sheet) args.push('--sheet', sheet);
-    if (table) args.push('--table', table);
-    const result = runNumbersReader<TableData>('read', args);
+    if (sheet) args.push("--sheet", sheet);
+    if (table) args.push("--table", table);
+    const result = runNumbersReader<TableData>("read", args);
     if (result.error) throw new Error(result.error);
     return result.data!;
   }
@@ -55,11 +53,15 @@ export class NumbersManager {
    * Search for a string value across all cells in the file.
    * Optionally restrict to a specific sheet.
    */
-  search(filePath: string, query: string, sheet?: string): { results: SearchResult[]; count: number } {
+  search(
+    filePath: string,
+    query: string,
+    sheet?: string
+  ): { results: SearchResult[]; count: number } {
     const resolved = this.validatePath(filePath);
     const args = [resolved, query];
-    if (sheet) args.push('--sheet', sheet);
-    const result = runNumbersReader<{ results: SearchResult[]; count: number }>('search', args);
+    if (sheet) args.push("--sheet", sheet);
+    const result = runNumbersReader<{ results: SearchResult[]; count: number }>("search", args);
     if (result.error) throw new Error(result.error);
     return result.data!;
   }
@@ -69,19 +71,19 @@ export class NumbersManager {
    */
   exportTable(
     filePath: string,
-    format: 'csv' | 'json' | 'tsv',
+    format: "csv" | "json" | "tsv",
     outputPath: string,
     sheet?: string,
-    table?: string,
+    table?: string
   ): ExportResult {
     const resolved = this.validatePath(filePath);
-    const outputResolved = outputPath.startsWith('~')
+    const outputResolved = outputPath.startsWith("~")
       ? outputPath.replace(/^~/, homedir())
       : resolve(outputPath);
     const args = [resolved, format, outputResolved];
-    if (sheet) args.push('--sheet', sheet);
-    if (table) args.push('--table', table);
-    const result = runNumbersReader<ExportResult>('export', args);
+    if (sheet) args.push("--sheet", sheet);
+    if (table) args.push("--table", table);
+    const result = runNumbersReader<ExportResult>("export", args);
     if (result.error) throw new Error(result.error);
     return result.data!;
   }
@@ -91,8 +93,12 @@ export class NumbersManager {
    */
   getCell(filePath: string, sheet: string, table: string, row: number, col: number): CellValue {
     const resolved = this.validatePath(filePath);
-    const result = runNumbersReader<CellValue>('cell', [
-      resolved, sheet, table, String(row), String(col),
+    const result = runNumbersReader<CellValue>("cell", [
+      resolved,
+      sheet,
+      table,
+      String(row),
+      String(col),
     ]);
     if (result.error) throw new Error(result.error);
     return result.data!;
