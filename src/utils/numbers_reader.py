@@ -50,13 +50,30 @@ def cell_to_serializable(cell):
         return {"value": str(val), "type": "string"}
 
 
+def _format_cell_value(val):
+    """Format a raw cell value as a clean string (for headers, etc.)."""
+    if val is None:
+        return None
+    from datetime import datetime, date
+    if isinstance(val, datetime) and val.hour == 0 and val.minute == 0 and val.second == 0 and val.microsecond == 0:
+        return val.date().isoformat()
+    if isinstance(val, date):
+        return val.isoformat()
+    if isinstance(val, float):
+        rounded = round(val)
+        if abs(val - rounded) < 1e-9:
+            return str(rounded)
+    return str(val)
+
+
 def get_table_info(table, sheet_name):
     """Get metadata about a table."""
     headers = []
     if table.num_rows > 0:
         for col in range(table.num_cols):
             cell = table.cell(0, col)
-            headers.append(str(cell.value) if cell.value is not None else f"Column_{col}")
+            formatted = _format_cell_value(cell.value)
+            headers.append(formatted if formatted is not None else f"Column_{col}")
     return {
         "name": table.name,
         "sheetName": sheet_name,
@@ -102,7 +119,8 @@ def cmd_read(args):
         all_headers = []
         for c in range(table.num_cols):
             cell = table.cell(0, c)
-            all_headers.append(str(cell.value) if cell.value is not None else f"Column_{c}")
+            formatted = _format_cell_value(cell.value)
+            all_headers.append(formatted if formatted is not None else f"Column_{c}")
         for col_ref in requested:
             if isinstance(col_ref, int):
                 col_indices.append(col_ref)
@@ -120,7 +138,8 @@ def cmd_read(args):
     headers = []
     for col in col_indices:
         cell = table.cell(0, col)
-        headers.append(str(cell.value) if cell.value is not None else f"Column_{col}")
+        formatted = _format_cell_value(cell.value)
+        headers.append(formatted if formatted is not None else f"Column_{col}")
 
     # Determine row range
     default_start = 0 if args.include_header_row else 1
@@ -159,7 +178,8 @@ def cmd_search(args):
             headers = []
             for col in range(table.num_cols):
                 cell = table.cell(0, col)
-                headers.append(str(cell.value) if cell.value is not None else f"Column_{col}")
+                formatted = _format_cell_value(cell.value)
+                headers.append(formatted if formatted is not None else f"Column_{col}")
             for row_idx in range(table.num_rows):
                 for col_idx in range(table.num_cols):
                     cell = table.cell(row_idx, col_idx)
@@ -185,7 +205,8 @@ def cmd_export(args):
     headers = []
     for col in range(table.num_cols):
         cell = table.cell(0, col)
-        headers.append(str(cell.value) if cell.value is not None else f"Column_{col}")
+        formatted = _format_cell_value(cell.value)
+        headers.append(formatted if formatted is not None else f"Column_{col}")
 
     rows = []
     for row_idx in range(1, table.num_rows):
@@ -274,7 +295,9 @@ def cmd_create(args):
         table.name = args.table_name
 
     for col_idx, header in enumerate(headers):
-        table.write(0, col_idx, str(header))
+        if header is not None:
+            if header is not None:
+                table.write(0, col_idx, str(header))
 
     rows_written = 0
     for row_idx, row in enumerate(rows, start=1):
@@ -347,10 +370,15 @@ def cmd_add_rows(args):
     rows = json.loads(args.rows)
     start_row = table.num_rows
     for row_offset, row in enumerate(rows):
+        has_value = False
         for col_idx, val in enumerate(row):
             coerced = _coerce_value(val)
             if coerced is not None:
                 table.write(start_row + row_offset, col_idx, coerced)
+                has_value = True
+        # Ensure empty rows still expand the table
+        if not has_value:
+            table.write(start_row + row_offset, 0, "")
     doc.save(args.file)
     result = {
         "path": str(Path(args.file).resolve()),
@@ -402,7 +430,8 @@ def cmd_add_sheet(args):
         table.name = args.table_name
     if headers:
         for col_idx, header in enumerate(headers):
-            table.write(0, col_idx, str(header))
+            if header is not None:
+                table.write(0, col_idx, str(header))
     doc.save(args.file)
     result = {
         "path": str(Path(args.file).resolve()),
@@ -426,7 +455,8 @@ def cmd_add_table(args):
     table = sheet.tables[-1]
     if headers:
         for col_idx, header in enumerate(headers):
-            table.write(0, col_idx, str(header))
+            if header is not None:
+                table.write(0, col_idx, str(header))
     doc.save(args.file)
     result = {
         "path": str(Path(args.file).resolve()),
