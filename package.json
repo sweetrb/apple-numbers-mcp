@@ -4,13 +4,27 @@
   "description": "MCP server for reading and writing Apple Numbers (.numbers) spreadsheet files",
   "type": "module",
   "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "bin": {
+    "apple-numbers-mcp": "build/index.js"
+  },
+  "files": [
+    "build",
+    "src/utils/numbers_reader.py",
+    "scripts/setup.sh",
+    "requirements.txt",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "build": "tsc && tsc-alias",
     "start": "node build/index.js",
     "dev": "tsc --watch",
     "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "format": "prettier --write src",
+    "format:check": "prettier --check src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run src/__tests__/integration/",
@@ -22,6 +36,26 @@
   },
   "volta": {
     "node": "22.13.1"
+  },
+  "keywords": [
+    "mcp",
+    "apple-numbers",
+    "claude",
+    "ai",
+    "spreadsheet",
+    "macos",
+    "numbers-parser",
+    "model-context-protocol"
+  ],
+  "author": "Rob Sweet <rob@superiortech.io>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sweetrb/apple-numbers-mcp.git"
+  },
+  "homepage": "https://github.com/sweetrb/apple-numbers-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/sweetrb/apple-numbers-mcp/issues"
   },
   "engines": {
     "node": ">=20.0.0"
