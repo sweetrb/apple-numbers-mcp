@@ -57,6 +57,18 @@ export function _resetPythonCache(): void {
   cachedPython = null;
 }
 
+const DEFAULT_MAX_BUFFER_BYTES = 50 * 1024 * 1024; // 50MB for large spreadsheets
+
+/** Max stdout bytes from the Python sidecar, overridable via env for huge files. */
+function getMaxBuffer(): number {
+  const raw = process.env.APPLE_NUMBERS_MCP_MAX_BUFFER;
+  if (raw !== undefined) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_MAX_BUFFER_BYTES;
+}
+
 export function runNumbersReader<T = unknown>(
   command: string,
   args: string[],
@@ -75,7 +87,7 @@ export function runNumbersReader<T = unknown>(
     const stdout = execFileSync(python, fullArgs, {
       encoding: "utf-8",
       timeout: timeoutMs,
-      maxBuffer: 50 * 1024 * 1024, // 50MB for large spreadsheets
+      maxBuffer: getMaxBuffer(),
       stdio: ["pipe", "pipe", "pipe"],
     });
 

@@ -6,6 +6,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { NumbersManager } from "./services/numbersManager.js";
+import { successResponse, withErrorHandling } from "./tools/respond.js";
+import { runDoctor, formatDoctorReport } from "./tools/doctor.js";
+import { registerResourcesAndPrompts } from "./tools/resourcesAndPrompts.js";
+import { loadFileConfig } from "./services/fileConfig.js";
+
+// Load file-based config FIRST — before anything reads APPLE_NUMBERS_MCP_* env
+// vars — so settings survive a host that strips the MCP env block.
+loadFileConfig();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,28 +21,6 @@ const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-
 const version: string = pkg.version;
 
 const manager = new NumbersManager();
-
-function errorResponse(message: string) {
-  return { content: [{ type: "text" as const, text: message }], isError: true };
-}
-
-function textResponse(text: string) {
-  return { content: [{ type: "text" as const, text }] };
-}
-
-function withErrorHandling<T>(
-  handler: (params: T) => ReturnType<typeof textResponse>,
-  prefix: string
-) {
-  return (params: T) => {
-    try {
-      return handler(params);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return errorResponse(`${prefix}: ${msg}`);
-    }
-  };
-}
 
 // --- Tool Definitions ---
 
@@ -55,8 +41,23 @@ server.tool(
   {},
   withErrorHandling(() => {
     const result = manager.healthCheck();
-    return textResponse(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`);
+    return successResponse(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`, {
+      ...result,
+    });
   }, "health-check")
+);
+
+// doctor
+server.tool(
+  "doctor",
+  "Run a full setup diagnostic: numbers-parser (read sidecar), Numbers.app (needed " +
+    "for writes), and Automation permission — each reported as ok/warn/fail with " +
+    "actionable advice. Use this when a tool returns a permission or setup error.",
+  {},
+  withErrorHandling(() => {
+    const report = runDoctor(manager);
+    return successResponse(formatDoctorReport(report), { ...report });
+  }, "doctor")
 );
 
 // get-file-info
@@ -78,7 +79,10 @@ server.tool(
         return `  Sheet: "${s.name}"\n${tables}`;
       })
       .join("\n");
-    return textResponse(`File: ${info.path}\nDefault sheet: "${info.defaultSheet}"\n\n${summary}`);
+    return successResponse(
+      `File: ${info.path}\nDefault sheet: "${info.defaultSheet}"\n\n${summary}`,
+      { ...info }
+    );
   }, "get-file-info")
 );
 
@@ -116,10 +120,11 @@ server.tool(
     const dataRows = data.rows
       .map((row) => row.map((v) => (v === null ? "" : String(v))).join(" | "))
       .join("\n");
-    return textResponse(
+    return successResponse(
       `Sheet: "${data.sheetName}" | Table: "${data.tableName}" | ` +
         `${data.numRows} rows × ${data.numCols} cols\n\n` +
-        `${headerLine}\n${separator}\n${dataRows}`
+        `${headerLine}\n${separator}\n${dataRows}`,
+      { ...data }
     );
   }, "read-table")
 );
@@ -137,12 +142,15 @@ server.tool(
   withErrorHandling(({ path, query, sheet }) => {
     const { results, count } = manager.search(path, query, sheet);
     if (count === 0) {
-      return textResponse(`No results found for "${query}"`);
+      return successResponse(`No results found for "${query}"`, { results, count });
     }
     const lines = results.map(
       (r) => `[${r.sheetName}/${r.tableName}] Row ${r.row}, Col "${r.header}": ${r.value}`
     );
-    return textResponse(`Found ${count} match(es) for "${query}":\n\n${lines.join("\n")}`);
+    return successResponse(`Found ${count} match(es) for "${query}":\n\n${lines.join("\n")}`, {
+      results,
+      count,
+    });
   }, "search")
 );
 
@@ -159,9 +167,10 @@ server.tool(
   },
   withErrorHandling(({ path, format, outputPath, sheet, table }) => {
     const result = manager.exportTable(path, format, outputPath, sheet, table);
-    return textResponse(
+    return successResponse(
       `Exported ${result.rowCount} rows from "${result.sheetName}/${result.tableName}" ` +
-        `to ${result.format.toUpperCase()}: ${result.outputPath}`
+        `to ${result.format.toUpperCase()}: ${result.outputPath}`,
+      { ...result }
     );
   }, "export-table")
 );
@@ -187,7 +196,7 @@ server.tool(
       if (cell.formattedValue) text += `\nFormatted: ${cell.formattedValue}`;
       if (cell.isMerged) text += `\nMerged: yes`;
     }
-    return textResponse(text);
+    return successResponse(text, { ...cell });
   }, "get-cell")
 );
 
@@ -208,10 +217,11 @@ server.tool(
   },
   withErrorHandling(({ path, headers, rows, sheetName, tableName }) => {
     const result = manager.createSpreadsheet(path, headers, { sheetName, tableName, rows });
-    return textResponse(
+    return successResponse(
       `Created ${result.path}\n` +
         `Sheet: "${result.sheetName}" | Table: "${result.tableName}"\n` +
-        `${result.numHeaders} columns, ${result.numRows} data rows`
+        `${result.numHeaders} columns, ${result.numRows} data rows`,
+      { ...result }
     );
   }, "create-spreadsheet")
 );
@@ -235,9 +245,10 @@ server.tool(
   },
   withErrorHandling(({ path, row, col, value, sheet, table, type }) => {
     const result = manager.setCell(path, row, col, value, { sheet, table, type });
-    return textResponse(
+    return successResponse(
       `Set cell (${result.row}, ${result.col}) = ${result.value} ` +
-        `in "${result.sheetName}/${result.tableName}"`
+        `in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
     );
   }, "set-cell")
 );
@@ -270,8 +281,9 @@ server.tool(
   },
   withErrorHandling(({ path, updates, sheet, table }) => {
     const result = manager.setCellsBatch(path, updates, { sheet, table });
-    return textResponse(
-      `Updated ${result.cellsWritten} cells in "${result.sheetName}/${result.tableName}"`
+    return successResponse(
+      `Updated ${result.cellsWritten} cells in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
     );
   }, "set-cells-batch")
 );
@@ -292,9 +304,10 @@ server.tool(
   },
   withErrorHandling(({ path, rows, sheet, table }) => {
     const result = manager.addRows(path, rows, { sheet, table });
-    return textResponse(
+    return successResponse(
       `Added ${result.rowsAdded} rows to "${result.sheetName}/${result.tableName}" ` +
-        `(starting at row ${result.startRow}, new total: ${result.newTotalRows})`
+        `(starting at row ${result.startRow}, new total: ${result.newTotalRows})`,
+      { ...result }
     );
   }, "add-rows")
 );
@@ -313,9 +326,10 @@ server.tool(
   },
   withErrorHandling(({ path, startRow, endRow, sheet, table }) => {
     const result = manager.deleteRows(path, startRow, endRow, { sheet, table });
-    return textResponse(
+    return successResponse(
       `Deleted ${result.rowsDeleted} rows from "${result.sheetName}/${result.tableName}" ` +
-        `(new total: ${result.newTotalRows})`
+        `(new total: ${result.newTotalRows})`,
+      { ...result }
     );
   }, "delete-rows")
 );
@@ -333,9 +347,10 @@ server.tool(
   },
   withErrorHandling(({ path, sheetName, tableName, headers }) => {
     const result = manager.addSheet(path, sheetName, { tableName, headers });
-    return textResponse(
+    return successResponse(
       `Added sheet "${result.sheetName}" with table "${result.tableName}" ` +
-        `(${result.numRows}×${result.numCols})`
+        `(${result.numRows}×${result.numCols})`,
+      { ...result }
     );
   }, "add-sheet")
 );
@@ -352,9 +367,10 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, tableName, headers }) => {
     const result = manager.addTable(path, { sheet, tableName, headers });
-    return textResponse(
+    return successResponse(
       `Added table "${result.tableName}" to sheet "${result.sheetName}" ` +
-        `(${result.numRows}×${result.numCols})`
+        `(${result.numRows}×${result.numCols})`,
+      { ...result }
     );
   }, "add-table")
 );
@@ -376,10 +392,11 @@ server.tool(
   },
   withErrorHandling(({ inputPath, outputPath, format, sheetName, tableName }) => {
     const result = manager.importFile(inputPath, outputPath, { format, sheetName, tableName });
-    return textResponse(
+    return successResponse(
       `Imported ${result.numRows} rows (${result.numHeaders} columns) from ${result.format.toUpperCase()}\n` +
         `Input: ${result.inputPath}\nOutput: ${result.path}\n` +
-        `Sheet: "${result.sheetName}" | Table: "${result.tableName}"`
+        `Sheet: "${result.sheetName}" | Table: "${result.tableName}"`,
+      { ...result }
     );
   }, "import-csv")
 );
@@ -407,8 +424,9 @@ server.tool(
   },
   withErrorHandling(({ path, updates, sheet, table }) => {
     const result = manager.updateRows(path, updates, { sheet, table });
-    return textResponse(
-      `Updated ${result.rowsUpdated} rows in "${result.sheetName}/${result.tableName}"`
+    return successResponse(
+      `Updated ${result.rowsUpdated} rows in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
     );
   }, "update-rows")
 );
@@ -424,7 +442,9 @@ server.tool(
   },
   withErrorHandling(({ path, newName, sheet }) => {
     const result = manager.renameSheet(path, newName, sheet);
-    return textResponse(`Renamed sheet "${result.oldName}" → "${result.newName}"`);
+    return successResponse(`Renamed sheet "${result.oldName}" → "${result.newName}"`, {
+      ...result,
+    });
   }, "rename-sheet")
 );
 
@@ -440,8 +460,9 @@ server.tool(
   },
   withErrorHandling(({ path, newName, sheet, table }) => {
     const result = manager.renameTable(path, newName, { sheet, table });
-    return textResponse(
-      `Renamed table "${result.oldName}" → "${result.newName}" in sheet "${result.sheetName}"`
+    return successResponse(
+      `Renamed table "${result.oldName}" → "${result.newName}" in sheet "${result.sheetName}"`,
+      { ...result }
     );
   }, "rename-table")
 );
@@ -462,9 +483,10 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, row, col, formula }) => {
     const result = manager.setCellFormula(path, sheet, table, row, col, formula);
-    return textResponse(
+    return successResponse(
       `Set formula on ${result.cell} in "${result.sheetName}/${result.tableName}"\n` +
-        `Formula: ${result.formula}\nComputed value: ${result.computedValue}`
+        `Formula: ${result.formula}\nComputed value: ${result.computedValue}`,
+      { ...result }
     );
   }, "set-formula")
 );
@@ -491,8 +513,9 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, formulas }) => {
     const result = manager.setCellFormulasBatch(path, sheet, table, formulas);
-    return textResponse(
-      `Set ${result.cellsSet} formulas in "${result.sheetName}/${result.tableName}"`
+    return successResponse(
+      `Set ${result.cellsSet} formulas in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
     );
   }, "set-formulas-batch")
 );
@@ -549,7 +572,10 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, row, col, style }) => {
     const result = manager.setCellStyle(path, sheet, table, row, col, style);
-    return textResponse(`Styled cell ${result.cell} in "${result.sheetName}/${result.tableName}"`);
+    return successResponse(
+      `Styled cell ${result.cell} in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
+    );
   }, "set-cell-style")
 );
 
@@ -574,8 +600,9 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, entries }) => {
     const result = manager.setCellsStyleBatch(path, sheet, table, entries);
-    return textResponse(
-      `Styled ${result.cellsStyled} cells in "${result.sheetName}/${result.tableName}"`
+    return successResponse(
+      `Styled ${result.cellsStyled} cells in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
     );
   }, "set-cells-style-batch")
 );
@@ -593,7 +620,13 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, col, width }) => {
     manager.setColumnWidth(path, sheet, table, col, width);
-    return textResponse(`Set column ${col} width to ${width}px in "${sheet}/${table}"`);
+    return successResponse(`Set column ${col} width to ${width}px in "${sheet}/${table}"`, {
+      path,
+      sheet,
+      table,
+      col,
+      width,
+    });
   }, "set-column-width")
 );
 
@@ -610,7 +643,13 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, row, height }) => {
     manager.setRowHeight(path, sheet, table, row, height);
-    return textResponse(`Set row ${row} height to ${height}px in "${sheet}/${table}"`);
+    return successResponse(`Set row ${row} height to ${height}px in "${sheet}/${table}"`, {
+      path,
+      sheet,
+      table,
+      row,
+      height,
+    });
   }, "set-row-height")
 );
 
@@ -629,7 +668,9 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, startRow, startCol, endRow, endCol }) => {
     const result = manager.mergeCells(path, sheet, table, startRow, startCol, endRow, endCol);
-    return textResponse(`Merged ${result.range} in "${result.sheetName}/${result.tableName}"`);
+    return successResponse(`Merged ${result.range} in "${result.sheetName}/${result.tableName}"`, {
+      ...result,
+    });
   }, "merge-cells")
 );
 
@@ -648,9 +689,16 @@ server.tool(
   },
   withErrorHandling(({ path, sheet, table, startRow, startCol, endRow, endCol }) => {
     const result = manager.unmergeCells(path, sheet, table, startRow, startCol, endRow, endCol);
-    return textResponse(`Unmerged ${result.range} in "${result.sheetName}/${result.tableName}"`);
+    return successResponse(
+      `Unmerged ${result.range} in "${result.sheetName}/${result.tableName}"`,
+      { ...result }
+    );
   }, "unmerge-cells")
 );
+
+// Register read-only resources (numbers://file/{path}, numbers://table/{path})
+// and workflow prompts.
+registerResourcesAndPrompts(server, manager);
 
 // --- Start Server ---
 

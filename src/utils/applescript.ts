@@ -1,6 +1,44 @@
 import { execFileSync } from "node:child_process";
 
 /**
+ * Output cap for osascript. Node's execFileSync defaults to ~1 MB, which a large
+ * table read (getCellStyle round-trips, big batch operations) can blow past —
+ * execFileSync then throws ENOBUFS and the failure surfaces with no useful detail.
+ * 64 MB headroom, overridable via APPLE_NUMBERS_MCP_MAX_BUFFER.
+ */
+const DEFAULT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
+function getMaxBuffer(): number {
+  const raw = process.env.APPLE_NUMBERS_MCP_MAX_BUFFER;
+  if (raw !== undefined) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_MAX_BUFFER_BYTES;
+}
+
+/**
+ * Headroom (ms) between the in-AppleScript `with timeout` and the outer osascript
+ * process timeout. The script-level timeout should fire first so Numbers.app
+ * aborts from inside its own AppleScript dispatch before Node SIGKILLs osascript.
+ * Killing osascript alone does not stop work already dispatched into Numbers.app,
+ * which is what wedges it for subsequent calls.
+ */
+const SCRIPT_TIMEOUT_HEADROOM_MS = 5000;
+
+/**
+ * Wrap a full `tell application "Numbers" ... end tell` script in an AppleScript
+ * `with timeout` block so an Apple Event that honors timeouts aborts cleanly
+ * rather than holding Numbers.app's single-threaded dispatch open. The seconds
+ * value is set below the process timeout so the in-app abort wins the race
+ * against the outer SIGKILL.
+ */
+function wrapWithTimeout(script: string, processTimeoutMs: number): string {
+  const seconds = Math.max(1, Math.ceil((processTimeoutMs - SCRIPT_TIMEOUT_HEADROOM_MS) / 1000));
+  return `with timeout of ${seconds} seconds\n${script}\nend timeout`;
+}
+
+/**
  * Convert 0-based row/col indices to A1 notation (e.g., 0,0 → "A1", 2,3 → "D3").
  */
 export function toA1(row: number, col: number): string {
@@ -18,11 +56,30 @@ export function toA1(row: number, col: number): string {
  * Run an AppleScript string via osascript and return stdout.
  */
 export function runAppleScript(script: string, timeoutMs = 60000): string {
-  return execFileSync("osascript", ["-e", script], {
-    encoding: "utf-8",
-    timeout: timeoutMs,
-    stdio: ["pipe", "pipe", "pipe"],
-  }).trim();
+  try {
+    return execFileSync("osascript", ["-e", wrapWithTimeout(script, timeoutMs)], {
+      encoding: "utf-8",
+      timeout: timeoutMs,
+      // SIGKILL (not the default SIGTERM): a wedged osascript blocked on an
+      // unresponsive Numbers.app can ignore SIGTERM and leak. SIGKILL guarantees
+      // the process is reaped on timeout.
+      killSignal: "SIGKILL",
+      // Raise the output cap above Node's ~1 MB default so large reads aren't
+      // truncated into an ENOBUFS failure.
+      maxBuffer: getMaxBuffer(),
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch (err: unknown) {
+    // osascript writes its real diagnostic to stderr; Node's default error
+    // message ("Command failed: osascript ...") buries it. Surface stderr so the
+    // thrown Error carries the actual AppleScript error.
+    const error = err as Error & { stderr?: string | Buffer };
+    const stderr = error.stderr?.toString().trim();
+    if (stderr) {
+      error.message = `${error.message}\n${stderr}`;
+    }
+    throw error;
+  }
 }
 
 /**

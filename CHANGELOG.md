@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0] - 2026-06-20
+
+Maturity release bringing apple-numbers-mcp to feature/stability parity with apple-mail-mcp and apple-notes-mcp. First npm-published release.
+
+### Added
+
+- **`doctor` tool** — a richer diagnostic than `health-check`: separate checks for the numbers-parser read sidecar, Numbers.app presence (needed for writes), and a reminder about the Automation permission, each reported ok / warn / fail with advice (`structuredContent` carries `{ healthy, checks[] }`). Reads work without Numbers.app, so a missing app is a warning, not a failure.
+- **`structuredContent` on every tool** — all 25 tools now return typed JSON alongside the human-readable text, so agents can consume results (file structure, cell values, search hits, edit confirmations) without parsing prose.
+- **MCP resources & prompts** — resources `numbers://file/{path}` (file info) and `numbers://table/{path}` (default table read); prompts `analyze-spreadsheet`, `bulk-edit`, and `import-csv-guide`.
+- **File-based config loader** — reads `~/Library/Application Support/apple-numbers-mcp/config.json` (override via `APPLE_NUMBERS_MCP_CONFIG_FILE`), merging string values into the environment without overriding already-set vars, so settings survive a host that strips the MCP env block.
+- **Docs** — `docs/AUTOMATION-PERMISSION.md` (which tools need the Numbers.app Automation permission and how to grant/reset it), `docs/LIMITATIONS.md` (read-vs-write split, AppleScript-only formulas/styling, 0-based inclusive indexing, format lag), and a `CLAUDE.md` agent guide.
+- **Plugin marketplace manifest** — added `.claude-plugin/marketplace.json` (the server was previously only a bare `plugin.json`), kept in step with `package.json` by the new `scripts/sync-plugin-version.mjs`.
+
+### Changed
+
+- **Hardened the subprocess layers.** The Python reader's `maxBuffer` (50 MB) and the AppleScript layer's `maxBuffer` (64 MB) are now overridable via `APPLE_NUMBERS_MCP_MAX_BUFFER`. The AppleScript layer also gained a script-level `with timeout` wrap, `killSignal: SIGKILL` (so a wedged Numbers.app osascript is reaped), and surfaces osascript stderr in thrown errors instead of a bare "Command failed".
+- **CI** now runs `format:check` and tests with coverage (per-directory thresholds: services/tools/utils), keeps the fixture-generated integration job, and `publish.yml` auto-publishes on a successful CI run on `main` (in addition to the existing release trigger).
+- **Tooling** — shared `src/tools/respond.ts` helpers; the `version` lifecycle script now syncs both plugin manifests. Test suite grown to 95 unit tests (+ 30 integration), with `@vitest/coverage-v8` and a `test:coverage` script.
+
+### Fixed
+
+- **Plugin install no longer blocked by husky** — `prepare` changed from `husky && npm run build` to `husky; npm run build`, so the build still runs when husky can't initialize (e.g. a marketplace git-clone install).
+- **ESLint config** — disabled `no-undef` for TypeScript files (TS already checks this, and `no-undef` mis-flagged type-only references like `NodeJS.ProcessEnv`) and added a test-file override; lint is clean again.
+
 ## [0.4.1] - 2026-06-01
 
 ### Fixed
