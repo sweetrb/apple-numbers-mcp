@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-// We need to mock child_process and fs before importing the module under test
+// We need to mock child_process and fs before importing the module under test.
+// Auto-setup/bootstrap is OFF under vitest (the VITEST env var is set by the
+// test runner), so these tests never spawn scripts/setup.sh.
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
   execSync: vi.fn(),
@@ -10,11 +12,13 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
 const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedExecSync = vi.mocked(execSync);
 const mockedExistsSync = vi.mocked(existsSync);
+const mockedReadFileSync = vi.mocked(readFileSync);
 
 // Reset the cached python between tests by re-importing
 let runNumbersReader: typeof import("../../utils/python.js").runNumbersReader;
@@ -33,10 +37,12 @@ describe("python.ts", () => {
 
     vi.doMock("node:fs", () => ({
       existsSync: mockedExistsSync,
+      readFileSync: mockedReadFileSync,
     }));
 
     // Default: no venv, python3 is on PATH
     mockedExistsSync.mockReturnValue(false);
+    mockedReadFileSync.mockReturnValue("numbers-parser\n");
     mockedExecSync.mockReturnValue(Buffer.from("Python 3.11.0"));
 
     const mod = await import("../../utils/python.js");
@@ -82,6 +88,25 @@ describe("python.ts", () => {
       const result = runNumbersReader("info", ["/test.numbers"]);
 
       expect(result.error).toContain("numbers-parser not installed");
+    });
+
+    it("should return a setup hint with the env var on the missing-dep path", () => {
+      const error = new Error("Process exited with code 1") as Error & {
+        stderr: string;
+        status: number;
+      };
+      // Simulate a Python ModuleNotFoundError for the underscore module name.
+      error.stderr = "ModuleNotFoundError: No module named 'numbers_parser'";
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/test.numbers"]);
+
+      expect(result.error).toContain("numbers-parser not installed");
+      expect(result.error).toContain("npm run setup");
+      expect(result.error).toContain("APPLE_NUMBERS_MCP_NO_AUTO_SETUP");
     });
 
     it("should handle timeout errors", () => {
@@ -133,14 +158,57 @@ describe("python.ts", () => {
         expect.objectContaining({ timeout: 10000 })
       );
     });
+
+    it("should use the default 50MB maxBuffer", () => {
+      mockedExecFileSync.mockReturnValue('{"ok": true}');
+
+      runNumbersReader("info", ["/test.numbers"]);
+
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ maxBuffer: 50 * 1024 * 1024 })
+      );
+    });
+
+    it("should allow overriding maxBuffer via APPLE_NUMBERS_MCP_MAX_BUFFER", async () => {
+      vi.resetModules();
+      const prev = process.env.APPLE_NUMBERS_MCP_MAX_BUFFER;
+      process.env.APPLE_NUMBERS_MCP_MAX_BUFFER = String(200 * 1024 * 1024);
+
+      try {
+        const localExecFileSync = vi.fn().mockReturnValue('{"ok": true}');
+        vi.doMock("node:child_process", () => ({
+          execFileSync: localExecFileSync,
+          execSync: vi.fn().mockReturnValue(Buffer.from("Python 3.11.0")),
+        }));
+        vi.doMock("node:fs", () => ({
+          existsSync: vi.fn().mockReturnValue(false),
+          readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
+        }));
+
+        const mod = await import("../../utils/python.js");
+        mod.runNumbersReader("info", ["/test.numbers"]);
+
+        expect(localExecFileSync).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(Array),
+          expect.objectContaining({ maxBuffer: 200 * 1024 * 1024 })
+        );
+      } finally {
+        if (prev === undefined) delete process.env.APPLE_NUMBERS_MCP_MAX_BUFFER;
+        else process.env.APPLE_NUMBERS_MCP_MAX_BUFFER = prev;
+      }
+    });
   });
 
-  describe("findPython", () => {
-    it("should prefer venv python when it exists", async () => {
+  describe("resolvePython", () => {
+    it("should prefer venv python when it exists (with a fresh deps marker)", async () => {
       vi.resetModules();
       const localExecFileSync = vi.fn();
       const localExecSync = vi.fn();
-      const localExistsSync = vi.fn().mockReturnValue(true); // venv exists
+      // venv exists; marker present and matching requirements => venv is ready.
+      const localExistsSync = vi.fn().mockReturnValue(true);
 
       vi.doMock("node:child_process", () => ({
         execFileSync: localExecFileSync,
@@ -149,6 +217,7 @@ describe("python.ts", () => {
 
       vi.doMock("node:fs", () => ({
         existsSync: localExistsSync,
+        readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
       }));
 
       localExecFileSync.mockReturnValue('{"ok": true}');
@@ -177,6 +246,7 @@ describe("python.ts", () => {
 
       vi.doMock("node:fs", () => ({
         existsSync: vi.fn().mockReturnValue(false),
+        readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
       }));
 
       // python3 fails, python succeeds
@@ -210,6 +280,7 @@ describe("python.ts", () => {
 
       vi.doMock("node:fs", () => ({
         existsSync: vi.fn().mockReturnValue(false),
+        readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
       }));
 
       // Both python3 and python fail
@@ -219,18 +290,17 @@ describe("python.ts", () => {
 
       const mod = await import("../../utils/python.js");
 
-      // findPython throws, which runNumbersReader catches
-      // The error propagates since runNumbersReader doesn't catch findPython errors
+      // findSystemPython throws, which runNumbersReader doesn't catch.
       expect(() => mod.runNumbersReader("info", ["/test.numbers"])).toThrow("Python 3 not found");
     });
   });
 
   describe("checkDependencies", () => {
     it("should return ok when numbers-parser is available", () => {
-      // findPython's execSync (no encoding) returns Buffer;
+      // resolvePython's execSync (no encoding) returns Buffer;
       // checkDependencies' execSync (encoding: 'utf-8') returns string with .trim()
       mockedExecSync
-        .mockReturnValueOnce(Buffer.from("Python 3.11.0")) // findPython
+        .mockReturnValueOnce(Buffer.from("Python 3.11.0")) // findSystemPython
         .mockReturnValueOnce("4.3.0\n" as unknown as Buffer); // import check
 
       const result = checkDependencies();
@@ -251,9 +321,10 @@ describe("python.ts", () => {
 
       vi.doMock("node:fs", () => ({
         existsSync: vi.fn().mockReturnValue(false),
+        readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
       }));
 
-      // First call (findPython) succeeds, second call (import check) fails
+      // First call (findSystemPython) succeeds, second call (import check) fails
       localExecSync.mockReturnValueOnce(Buffer.from("Python 3.11.0")).mockImplementationOnce(() => {
         throw new Error("ModuleNotFoundError");
       });
