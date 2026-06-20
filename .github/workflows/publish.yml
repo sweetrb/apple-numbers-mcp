@@ -1,16 +1,39 @@
 name: Publish to npm
 
+# Two ways to publish:
+#   1. A GitHub Release is created (manual path — unchanged historical behavior).
+#   2. CI succeeds on a push to main (auto path — matches the photos/notes
+#      standard). On a normal merge to main, if package.json's version differs
+#      from what's on npm (including the not-yet-published 404 case), publish it.
+#
+# Both paths publish only when the local version is not already on npm, so
+# re-runs and no-op pushes are safe.
+
 on:
   release:
     types: [created]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 jobs:
   publish:
+    # Release path always runs. Auto path runs only when CI succeeded on a push.
+    if: >
+      github.event_name == 'release' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: macos-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Release path: check out the release's tag/commit (default). Auto path:
+          # check out main (the commit CI just validated).
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || github.ref }}
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -24,8 +47,12 @@ jobs:
         run: |
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           PUBLISHED_VERSION=$(npm view apple-numbers-mcp version 2>/dev/null || echo "0.0.0")
+          echo "Local: $LOCAL_VERSION  Published: $PUBLISHED_VERSION"
           echo "local=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
           echo "published=$PUBLISHED_VERSION" >> "$GITHUB_OUTPUT"
+          # Publish whenever the local version differs from what's on npm. The
+          # 0.0.0 fallback above covers the first-publish (404) case, so that
+          # publishes too.
           if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else

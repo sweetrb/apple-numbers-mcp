@@ -102,6 +102,7 @@ The entrypoint is written as:
 - **macOS or Linux** — `numbers-parser` reads the file format directly, so most tools work anywhere. **Formatting and formula tools require macOS with Numbers.app.**
 - **Node.js 20+** — Required for the MCP server
 - **Python 3.9+ with numbers-parser** — Install via `pip3 install numbers-parser` or via `npm run setup` if installing from source
+- **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
 
 ## Features
 
@@ -147,6 +148,17 @@ The entrypoint is written as:
 |---------|-------------|
 | **Import CSV/TSV/JSON** | Convert a tabular file into a new `.numbers` spreadsheet |
 | **Health Check** | Verify Python 3 and numbers-parser are installed |
+| **Doctor** | Richer setup diagnostic — read sidecar, Numbers.app, and Automation permission, each reported ok / warn / fail with actionable advice |
+
+All tools also return **structured JSON** (`structuredContent`) alongside the human-readable text, so agents can consume results without parsing prose.
+
+### MCP resources & prompts
+
+Resources expose read-only context the client can attach without a tool call:
+the `numbers://file/{path}` template (file structure — sheets, tables, dimensions,
+headers) and the `numbers://table/{path}` template (the default table's data).
+Both are templated by a URL-encoded `.numbers` file path. Prompts package common
+workflows: `analyze-spreadsheet`, `bulk-edit`, `import-csv-guide`.
 
 ---
 
@@ -162,6 +174,16 @@ Verify Python 3 and `numbers-parser` are installed and reachable from the server
 
 **Parameters:** None
 **Returns:** `numbers-parser` version, or an error explaining how to install.
+
+---
+
+#### `doctor`
+
+Run a full setup diagnostic with three separate checks: `numbers_parser` (the read sidecar — required for all reads/exports), `numbers_app` (Numbers.app present — required for write/format tools), and `automation_permission` (an informational reminder that write tools need Automation permission for Numbers.app). Each is reported as ok / warn / fail with actionable advice. This is the richer counterpart to `health-check`; reach for it first when a tool returns a permission or setup error.
+
+**Parameters:** None
+
+**Returns:** A per-check report. The `structuredContent` carries the raw `{ healthy, checks[] }`, where each check has `name`, `status` (`ok`/`warn`/`fail`), and `detail`. Reads don't need Automation permission, but writes do — see [docs/AUTOMATION-PERMISSION.md](docs/AUTOMATION-PERMISSION.md).
 
 ---
 
@@ -535,6 +557,37 @@ The server prefers a project-local venv at `./venv/bin/python3` if present, and 
 
 ---
 
+## Configuration
+
+All configuration is optional — the server works out of the box.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APPLE_NUMBERS_MCP_MAX_BUFFER` | 50 MB (Python reader) / 64 MB (AppleScript) | Max bytes captured from a subprocess's stdout, applied to both the Python reader and the AppleScript layer. Raise it if a very large spreadsheet is truncated; lower it to cap memory. |
+| `APPLE_NUMBERS_MCP_CONFIG_FILE` | `~/Library/Application Support/apple-numbers-mcp/config.json` | Path to the JSON config file (see below). |
+
+### Configuration file (when the host strips `env`)
+
+Some host apps (e.g. Claude Desktop) launch the MCP server with a scrubbed
+environment and ignore the `env` block in their server config, so there's no way
+to pass `APPLE_NUMBERS_MCP_*` settings through it. In that case, put them in a JSON
+file the host doesn't manage — `APPLE_NUMBERS_MCP_CONFIG_FILE`, or by default
+`~/Library/Application Support/apple-numbers-mcp/config.json`:
+
+```json
+{
+  "APPLE_NUMBERS_MCP_MAX_BUFFER": "104857600"
+}
+```
+
+The server reads it at startup and merges string values into the environment
+**without overriding** anything already set there (so an explicit `env` still
+wins). Keep only non-secret config here.
+
+---
+
 ## Architecture
 
 This package is a **TypeScript MCP server with a Python sidecar**:
@@ -558,6 +611,10 @@ This is the same Python-sidecar pattern used by [apple-photos-mcp](https://githu
 ---
 
 ## Known Limitations
+
+For the full rundown — the read-vs-write split, AppleScript-only formulas/styles,
+indexing, dates, format lag, and concurrent edits — see **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)**.
+The summary below is the quick version.
 
 | Limitation | Reason |
 |------------|--------|
@@ -588,9 +645,10 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 - Check the path; expand `~` if your shell isn't doing it.
 - Ensure the file extension is `.numbers`.
 
-### Formatting / formula tools fail with "Numbers.app not running"
+### Formatting / formula tools fail with "Numbers.app not running" or "Not authorized to send Apple events to Numbers"
 - Open Numbers.app at least once. macOS will prompt for automation permission — accept it.
-- Verify in **System Settings → Privacy & Security → Automation**.
+- Verify in **System Settings → Privacy & Security → Automation**, or reset with `tccutil reset AppleEvents`.
+- Run the **`doctor`** tool to confirm your setup — it reports the Numbers.app and Automation-permission checks separately. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Reads don't need this permission; only writes do.
 
 ### Output looks wrong (dates as ISO, floats with decimals)
 - The server normalizes dates to ISO 8601 and rounds floats that are within `1e-9` of an integer. If you want raw values, file an issue.
@@ -606,6 +664,7 @@ npm run build            # Compile TypeScript
 npm test                 # Unit tests (mocked)
 npm run test:integration # Integration tests against real .numbers fixtures
 npm run test:all         # Both
+npm run test:coverage    # Unit tests with coverage report
 npm run typecheck        # Type-check without emitting
 npm run lint             # Check code style
 npm run format           # Format code
