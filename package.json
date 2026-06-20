@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server for reading and writing Apple Numbers (.numbers) spreadsheet files",
   "type": "module",
   "main": "build/index.js",

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0] - 2026-06-20
+
+Bulletproof install & updates — the Python read sidecar now sets itself up.
+
+### Added
+
+- **Automatic Python venv bootstrap on first use.** If the `numbers-parser` venv is missing or out of date, the first read tool call now creates the venv and installs `numbers-parser` automatically (one-time; the first call can take ~a minute, with progress logged to stderr), then proceeds. A fresh install via npm, `npx`, or the Claude Code marketplace now works with **no manual `npm run setup` step** — though running it ahead of time still works as a pre-warm. (Write/format tools still need Numbers.app + Automation permission, unchanged.)
+- New env vars: `APPLE_NUMBERS_MCP_NO_AUTO_SETUP` (set truthy to disable the automatic bootstrap) and `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` (ms cap on the bootstrap, default 5 min).
+
+### Fixed
+
+- **Self-healing interpreter resolution.** The Python interpreter is no longer pinned at startup: a venv created or repaired while the server is running is picked up on the next call, with **no restart required**.
+- **Stale-venv detection.** `scripts/setup.sh` records the `requirements.txt` it installed against (a `venv/.deps-ok` marker); after an update changes requirements, the server rebuilds the venv automatically.
+- When automatic setup can't run (no Python 3, no `pip`, or offline), read tools return a clear, actionable error pointing at `npm run setup`.
+
 ## [0.5.0] - 2026-06-20
 
 Maturity release bringing apple-numbers-mcp to feature/stability parity with apple-mail-mcp and apple-notes-mcp. First npm-published release.

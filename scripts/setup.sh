@@ -43,4 +43,8 @@ echo "==> Installing numbers-parser..."
 echo "==> Verifying installation..."
 "$VENV_DIR/bin/python3" -c "import numbers_parser; print(f'    numbers-parser {numbers_parser.__version__} installed')"
 
+# Record which requirements.txt this venv was built against, so the server can
+# detect a stale venv after an update changes requirements and rebuild itself.
+cp "$PROJECT_ROOT/requirements.txt" "$VENV_DIR/.deps-ok"
+
 echo "==> Done! Python venv ready."
