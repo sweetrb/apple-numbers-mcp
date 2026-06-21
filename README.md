@@ -263,6 +263,8 @@ Export a table to CSV, TSV, or JSON.
 
 Create a new `.numbers` file with one sheet and table.
 
+**⚠️ Safety:** Overwrites the file at `path` if it already exists — confirm the destination first.
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Path for the new file |
@@ -276,6 +278,8 @@ Create a new `.numbers` file with one sheet and table.
 #### `set-cell`
 
 Write a value to a single cell.
+
+**⚠️ Safety:** Overwrites the existing cell value in place in the `.numbers` file.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -292,6 +296,8 @@ Write a value to a single cell.
 #### `set-cells-batch`
 
 Write multiple cells in a single operation. Much more efficient than multiple `set-cell` calls.
+
+**⚠️ Safety:** Overwrites the existing cell values in place in the `.numbers` file.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -319,6 +325,8 @@ Append rows of data after the last existing row.
 
 Write full rows by index. Each update is a complete row replacement.
 
+**⚠️ Safety:** Overwrites the existing row data in place in the `.numbers` file.
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Path to the `.numbers` file |
@@ -331,6 +339,8 @@ Write full rows by index. Each update is a complete row replacement.
 #### `delete-rows`
 
 Delete a range of rows by 0-based inclusive indices.
+
+**⚠️ Safety:** Destructive and not undoable — requires explicit user confirmation. Modifies the `.numbers` file in place; verify the row range first.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -475,6 +485,8 @@ Merge a rectangular range of cells, or undo a merge.
 #### `import-csv`
 
 Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet. Auto-detects format from extension, or pass `format` explicitly.
+
+**⚠️ Safety:** Overwrites the file at `outputPath` if it already exists — confirm the destination first.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
