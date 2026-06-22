@@ -6,6 +6,10 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that e
 [![CI](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<p align="center">
+  <img src="codex/assets/screenshot.svg" alt="Apple Numbers MCP — read, write, search, and format spreadsheets from Codex, Claude, and other AI assistants" width="680">
+</p>
+
 ## What is This?
 
 This server acts as a bridge between AI assistants and Apple Numbers spreadsheets. Once configured, you can ask Claude (or any MCP-compatible AI) to:
