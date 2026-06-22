@@ -1,0 +1,21 @@
+{
+  "name": "apple-numbers-mcp",
+  "interface": {
+    "displayName": "Apple Numbers MCP"
+  },
+  "plugins": [
+    {
+      "name": "apple-numbers",
+      "version": "0.6.0",
+      "source": {
+        "source": "local",
+        "path": "./codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

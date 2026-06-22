@@ -43,6 +43,21 @@ Install as a Claude Code plugin for automatic configuration and enhanced AI beha
 
 This method also installs a **skill** that teaches Claude when and how to use Apple Numbers effectively.
 
+### Using the Codex Marketplace
+
+Install the same public marketplace in Codex:
+
+```bash
+codex plugin marketplace add sweetrb/apple-numbers-mcp
+codex plugin add apple-numbers@apple-numbers-mcp
+```
+
+The Codex package registers the `apple-numbers` MCP server through
+`npx -y apple-numbers-mcp` — the same published-package invocation documented for
+Claude Desktop below — and bundles the Apple Numbers skill guidance. As with every
+install path, the `numbers-parser` Python sidecar must be available (`pip3 install
+numbers-parser`); see [Requirements](#requirements).
+
 ### Manual Installation
 
 **1. Install the server:**
