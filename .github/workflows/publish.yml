@@ -25,6 +25,9 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: macos-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -41,6 +44,9 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
           cache: "npm"
+
+      - name: Upgrade npm (OIDC trusted publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
 
       - name: Check if version is already published
         id: check
@@ -77,9 +83,10 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip == 'false'
+        # OIDC trusted publishing — no token. Requires id-token: write (above),
+        # npm >= 11.5.1 (upgraded above), and a Trusted Publisher configured for
+        # this package on npmjs.com (GitHub Actions → sweetrb/apple-numbers-mcp, publish.yml).
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Skip publish (version already published)
         if: steps.check.outputs.skip == 'true'
