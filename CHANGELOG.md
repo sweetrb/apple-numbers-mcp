@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Codex plugin marketplace packaging** ([#5](https://github.com/sweetrb/apple-numbers-mcp/pull/5)). Adds a `codex/` plugin package and `.agents/plugins/marketplace.json` so the server installs from Codex's marketplace alongside the Claude Code plugin (launched via `npx -y apple-numbers-mcp`), plus the Apple Numbers skill, and wires the new manifests into `scripts/sync-plugin-version.mjs` so their versions track `package.json`. Note: as with every install path, the `numbers-parser` Python sidecar must be available (see the README — `pip3 install numbers-parser` or the auto-bootstrap). Thanks @oliverames.
+
 ### Changed
 - **Restructured all 26 tool descriptions** into a consistent `Use when: / Returns: / Do not use when: / Safety:` shape so agents pick the right tool from MCP metadata alone, and added explicit **Safety** wording to the 19 write tools (#2). `delete-rows` is flagged destructive and not undoable; the in-place writers (`set-cell`, `set-cells-batch`, `update-rows`, `set-formula`/`set-formulas-batch`, `merge-cells`/`unmerge-cells`) note that they modify the file in place; and `create-spreadsheet`/`import-csv` note that they overwrite the target path if it already exists.
 
