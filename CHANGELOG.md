@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Hermes and Antigravity plugin packaging.** Adds `.hermes-plugin/` (`plugin.json`, `marketplace.json`, `mcp.json`) and `.antigravity-plugin/` (`plugin.json`, `marketplace.json`, `mcp_config.json`, plus the Apple Numbers skill) so the server installs from the Hermes and Antigravity hosts the same way it already does for Claude Code and Codex (launched via `npx -y apple-numbers-mcp`). This brings apple-numbers-mcp to multi-host plugin-packaging parity with the other Apple MCP servers (apple-mail-mcp, apple-notes-mcp). The new manifests are wired into `scripts/sync-plugin-version.mjs` so their versions track `package.json`. Note: as with every install path, the `numbers-parser` Python sidecar must be available (see the README — `pip3 install numbers-parser` or the auto-bootstrap).
 - **Codex plugin marketplace packaging** ([#5](https://github.com/sweetrb/apple-numbers-mcp/pull/5)). Adds a `codex/` plugin package and `.agents/plugins/marketplace.json` so the server installs from Codex's marketplace alongside the Claude Code plugin (launched via `npx -y apple-numbers-mcp`), plus the Apple Numbers skill, and wires the new manifests into `scripts/sync-plugin-version.mjs` so their versions track `package.json`. Note: as with every install path, the `numbers-parser` Python sidecar must be available (see the README — `pip3 install numbers-parser` or the auto-bootstrap). Thanks @oliverames.
 
 ### Changed

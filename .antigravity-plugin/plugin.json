@@ -1,0 +1,24 @@
+{
+  "name": "apple-numbers",
+  "version": "0.6.0",
+  "description": "Read and write Apple Numbers spreadsheets - read tables, create files, update cells, manage sheets/tables, search, import CSV/TSV/JSON, and export data (macOS only).",
+  "author": {
+    "name": "Rob Sweet",
+    "email": "rob@superiortech.io"
+  },
+  "license": "MIT",
+  "category": "productivity",
+  "displayName": "Apple Numbers",
+  "homepage": "https://github.com/sweetrb/apple-numbers-mcp#readme",
+  "repository": "https://github.com/sweetrb/apple-numbers-mcp",
+  "keywords": [
+    "mcp",
+    "apple-numbers",
+    "antigravity",
+    "claude",
+    "codex",
+    "macos",
+    "numbers",
+    "spreadsheets"
+  ]
+}

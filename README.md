@@ -58,6 +58,10 @@ Claude Desktop below — and bundles the Apple Numbers skill guidance. As with e
 install path, the `numbers-parser` Python sidecar must be available (`pip3 install
 numbers-parser`); see [Requirements](#requirements).
 
+### Other Hosts (Hermes, Antigravity)
+
+Plugin packaging for the Hermes and Antigravity hosts is also included (`.hermes-plugin/` and `.antigravity-plugin/`). Each registers the same `apple-numbers` MCP server (launched via `npx -y apple-numbers-mcp`) and bundles the Apple Numbers skill, so behavior matches the Claude Code and Codex plugins. As with every install path, the `numbers-parser` Python sidecar must be available (`pip3 install numbers-parser`); see [Requirements](#requirements). Install them through each host's plugin/marketplace mechanism pointed at this repository.
+
 ### Manual Installation
 
 **1. Install the server:**

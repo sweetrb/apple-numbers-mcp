@@ -1,0 +1,37 @@
+{
+  "name": "apple-numbers-mcp",
+  "metadata": {
+    "description": "Apple Numbers integration marketplace for Claude Code, Codex, Hermes, and Antigravity.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "apple-numbers",
+      "version": "0.6.0",
+      "description": "Read and write Apple Numbers spreadsheets - read tables, create files, update cells, manage sheets/tables, search, import CSV/TSV/JSON, and export data (macOS only).",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "category": "productivity",
+      "displayName": "Apple Numbers",
+      "author": {
+        "name": "Rob Sweet",
+        "email": "rob@superiortech.io"
+      },
+      "homepage": "https://github.com/sweetrb/apple-numbers-mcp#readme",
+      "repository": "https://github.com/sweetrb/apple-numbers-mcp",
+      "license": "MIT",
+      "keywords": [
+        "mcp",
+        "apple-numbers",
+        "antigravity",
+        "claude",
+        "codex",
+        "macos",
+        "numbers",
+        "spreadsheets"
+      ]
+    }
+  ]
+}

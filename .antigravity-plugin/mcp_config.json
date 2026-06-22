@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "apple-numbers": {
+      "command": "npx",
+      "args": ["-y", "apple-numbers-mcp"]
+    }
+  }
+}
