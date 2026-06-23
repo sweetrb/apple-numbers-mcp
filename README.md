@@ -3,8 +3,12 @@
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that enables AI assistants like Claude to read, write, search, and modify Apple Numbers (`.numbers`) spreadsheet files. Backed by the [numbers-parser](https://pypi.org/project/numbers-parser/) Python library.
 
 [![npm version](https://img.shields.io/npm/v/apple-numbers-mcp)](https://www.npmjs.com/package/apple-numbers-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/apple-numbers-mcp)](https://www.npmjs.com/package/apple-numbers-mcp)
+[![node](https://img.shields.io/node/v/apple-numbers-mcp)](https://www.npmjs.com/package/apple-numbers-mcp)
 [![CI](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml)
+[![platform: macOS](https://img.shields.io/badge/platform-macOS-111?logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io)
 
 <p align="center">
   <img src="codex/assets/screenshot.png" alt="Apple Numbers MCP — read, write, search, and format spreadsheets from Codex, Claude, and other AI assistants" width="680">

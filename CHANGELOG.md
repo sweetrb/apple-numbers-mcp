@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-23
+### Fixed
+- **Codex marketplace shipped the Apple Notes icon for Apple Numbers (#7).** Replaced `codex/assets/icon.png` (and added an `icon.svg` source) with a Numbers-specific icon — a green card with a bar-chart glyph, part of a consistent Apple MCP icon family. Thanks @oliverames for the hash-level diagnosis.
+
+### Documentation
+- README: added npm-downloads, supported-Node, platform-macOS, and MCP badges next to the existing version/CI/License badges.
+
 ## [0.6.1] - 2026-06-22
 ### Added
 - **Hermes and Antigravity plugin packaging.** Adds `.hermes-plugin/` (`plugin.json`, `marketplace.json`, `mcp.json`) and `.antigravity-plugin/` (`plugin.json`, `marketplace.json`, `mcp_config.json`, plus the Apple Numbers skill) so the server installs from the Hermes and Antigravity hosts the same way it already does for Claude Code and Codex (launched via `npx -y apple-numbers-mcp`). This brings apple-numbers-mcp to multi-host plugin-packaging parity with the other Apple MCP servers (apple-mail-mcp, apple-notes-mcp). The new manifests are wired into `scripts/sync-plugin-version.mjs` so their versions track `package.json`. Note: as with every install path, the `numbers-parser` Python sidecar must be available (see the README — `pip3 install numbers-parser` or the auto-bootstrap).
