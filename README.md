@@ -128,7 +128,7 @@ The entrypoint is written as:
 
 - **macOS or Linux** — `numbers-parser` reads the file format directly, so most tools work anywhere. **Formatting and formula tools require macOS with Numbers.app.**
 - **Node.js 20+** — Required for the MCP server
-- **Python 3.9+ with numbers-parser** — Install via `pip3 install numbers-parser` or via `npm run setup` if installing from source
+- **Python 3.11+** — the `numbers-parser` library installs automatically into a project-local venv on first use (or pre-warm with `npm run setup`). numbers-parser requires Python ≥ 3.10; macOS ships 3.9, so install a newer Python first (e.g. `brew install python@3.12`).
 - **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
 
 ## Features

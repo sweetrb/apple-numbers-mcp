@@ -7,15 +7,40 @@ Called by the TypeScript MCP server via child_process.
 import sys
 import json
 import argparse
+import os
 from pathlib import Path
 
 try:
     from numbers_parser import Document
 except ImportError:
     print(json.dumps({
-        "error": "numbers-parser not installed. Run: pip3 install numbers-parser"
+        "error": "numbers-parser not installed. Run: npm run setup"
     }))
     sys.exit(1)
+
+
+def _atomic_save(doc, path):
+    """Save a .numbers document atomically.
+
+    numbers-parser's Document.save() rewrites the entire .numbers archive; an
+    interrupted or failed save in place can leave the user's only copy
+    truncated or corrupt (and several mutations, e.g. delete-rows, are not
+    undoable). Because a .numbers file is a single zip archive, we write to a
+    sibling temp file and os.replace() it onto the target — atomic on the same
+    filesystem — so on any failure the original file is left untouched.
+    """
+    target = Path(path)
+    tmp = target.parent / f".{target.stem}.tmp-{os.getpid()}.numbers"
+    try:
+        doc.save(str(tmp))
+        os.replace(str(tmp), str(target))
+    except BaseException:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def cell_to_serializable(cell):
@@ -307,7 +332,7 @@ def cmd_create(args):
                 table.write(row_idx, col_idx, coerced)
         rows_written += 1
 
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -327,7 +352,7 @@ def cmd_set_cell(args):
     value = _coerce_value(json.loads(args.value), args.type)
     if value is not None:
         table.write(row, col, value)
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -352,7 +377,7 @@ def cmd_set_cells(args):
         if value is not None:
             table.write(row, col, value)
         cells_written += 1
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -379,7 +404,7 @@ def cmd_add_rows(args):
         # Ensure empty rows still expand the table
         if not has_value:
             table.write(start_row + row_offset, 0, "")
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -406,7 +431,7 @@ def cmd_delete_rows(args):
     # delete_row(num_rows, start_row) deletes num_rows starting at start_row
     table.delete_row(num_to_delete, start_row)
     rows_deleted = num_to_delete
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -432,7 +457,7 @@ def cmd_add_sheet(args):
         for col_idx, header in enumerate(headers):
             if header is not None:
                 table.write(0, col_idx, str(header))
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -457,7 +482,7 @@ def cmd_add_table(args):
         for col_idx, header in enumerate(headers):
             if header is not None:
                 table.write(0, col_idx, str(header))
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -522,7 +547,7 @@ def cmd_import(args):
             if coerced is not None:
                 table.write(row_idx, col_idx, coerced)
 
-    doc.save(args.output)
+    _atomic_save(doc, args.output)
     result = {
         "path": str(Path(args.output).resolve()),
         "inputPath": str(input_path.resolve()),
@@ -569,7 +594,7 @@ def cmd_update_rows(args):
             if coerced is not None:
                 table.write(row_idx, col_idx, coerced)
         rows_updated += 1
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,
@@ -585,7 +610,7 @@ def cmd_rename_sheet(args):
     sheet = _find_sheet(doc, args.sheet)
     old_name = sheet.name
     sheet.name = args.new_name
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "oldName": old_name,
@@ -601,7 +626,7 @@ def cmd_rename_table(args):
     table = _find_table(sheet, args.table)
     old_name = table.name
     table.name = args.new_name
-    doc.save(args.file)
+    _atomic_save(doc, args.file)
     result = {
         "path": str(Path(args.file).resolve()),
         "sheetName": sheet.name,

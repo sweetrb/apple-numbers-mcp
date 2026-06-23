@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-23
+
+First stable release. The public tool API (read / write / formula / format / import for `.numbers` files) is now committed under semver 1.0. This release focuses on production hardening.
+
+### Added
+- **CONTRIBUTING.md and SECURITY.md.**
+
+### Changed
+- **Bumped `@modelcontextprotocol/sdk` to ^1.29.0**, clearing all `npm audit` advisories (transitive, from the SDK's unused HTTP transport) — `npm audit --omit=dev` is now clean.
+- **Pinned the Python dependency range** (`numbers-parser>=4.0.0,<5.0`) so a future incompatible major can't be silently installed, keeping the 1.0 output contract reproducible.
+
+### Fixed
+- **Atomic file saves.** Every command that modifies an existing `.numbers` file now saves to a sibling temp file and `os.replace()`s it onto the target (atomic on the same filesystem), so an interrupted or failed save can no longer corrupt or truncate the user's only copy. This was the last gap before a confident 1.0, since several mutations (e.g. `delete-rows`) are not undoable.
+- **Python version is gated.** `scripts/setup.sh` now prefers a Python ≥ 3.11 interpreter and fails fast with actionable guidance if only an older one (e.g. macOS's stock 3.9) is found, instead of building a broken venv. README updated to state **Python 3.11+**.
+- The sidecar's missing-dependency hint now points at `npm run setup` (project venv) instead of a bare `pip3 install`.
+- **Release reliability:** the `npm install -g npm@latest` step in `publish.yml` now retries, so a transient registry `ECONNRESET` no longer aborts a release.
+
 ## [0.6.2] - 2026-06-23
 ### Fixed
 - **Codex marketplace shipped the Apple Notes icon for Apple Numbers (#7).** Replaced `codex/assets/icon.png` (and added an `icon.svg` source) with a Numbers-specific icon — a green card with a bar-chart glyph, part of a consistent Apple MCP icon family. Thanks @oliverames for the hash-level diagnosis.

@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers-mcp",
-  "version": "0.6.2",
+  "version": "1.0.0",
   "description": "MCP server for Apple Numbers - read, write, search, and format .numbers spreadsheets via Claude and other AI assistants",
   "type": "module",
   "main": "build/index.js",
@@ -66,7 +66,7 @@
     "darwin"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.4.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

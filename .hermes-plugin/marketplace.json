@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "apple-numbers",
-      "version": "0.6.2",
+      "version": "1.0.0",
       "description": "Read and write Apple Numbers spreadsheets - read tables, create files, update cells, manage sheets/tables, search, import CSV/TSV/JSON, and export data (macOS only).",
       "source": {
         "source": "local",
