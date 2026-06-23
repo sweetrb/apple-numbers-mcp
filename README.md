@@ -68,7 +68,10 @@ numbers-parser`); see [Requirements](#requirements).
 
 ### Other Hosts (Hermes, Antigravity)
 
-Plugin packaging for the Hermes and Antigravity hosts is also included (`.hermes-plugin/` and `.antigravity-plugin/`). Each registers the same `apple-numbers` MCP server (launched via `npx -y apple-numbers-mcp`) and bundles the Apple Numbers skill, so behavior matches the Claude Code and Codex plugins. As with every install path, the `numbers-parser` Python sidecar must be available (`pip3 install numbers-parser`); see [Requirements](#requirements). Install them through each host's plugin/marketplace mechanism pointed at this repository.
+Configuration for two more hosts is included — each registers the same `apple-numbers` MCP server (`npx -y apple-numbers-mcp`). All paths still need the `numbers-parser` Python sidecar available; see [Requirements](#requirements).
+
+- **[Hermes Agent](https://hermes-agent.nousresearch.com/)** (NousResearch) — Hermes has no plugin/marketplace drop-in. Add the server with `hermes mcp add apple-numbers --command npx --args -y apple-numbers-mcp`, or merge [`.hermes-plugin/config.yaml`](.hermes-plugin/config.yaml) into `~/.hermes/config.yaml`. Details: [`.hermes-plugin/README.md`](.hermes-plugin/README.md).
+- **[Antigravity](https://antigravity.google/)** (Google) — add the server entry from [`.antigravity-plugin/mcp_config.json`](.antigravity-plugin/mcp_config.json) to `~/.gemini/config/mcp_config.json` (or via Antigravity's MCP settings).
 
 ### Manual Installation
 

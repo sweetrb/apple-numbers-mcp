@@ -1,0 +1,20 @@
+# Apple Numbers MCP server — configuration for NousResearch's Hermes Agent.
+# Docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp/
+#
+# Hermes has no third-party plugin/marketplace drop-in. Register the server
+# one of two ways:
+#
+#   1. CLI (recommended):
+#        hermes mcp add apple-numbers --command npx --args -y apple-numbers-mcp
+#
+#   2. Manual: merge the mcp_servers block below into ~/.hermes/config.yaml,
+#      then restart your Hermes session.
+#
+# Requires macOS, Node.js 18+, and Python 3.11+ with numbers-parser available
+# (the server uses a Python sidecar — see the repo README → Requirements).
+mcp_servers:
+  apple-numbers:
+    command: npx
+    args:
+      - "-y"
+      - "apple-numbers-mcp"
