@@ -78,6 +78,9 @@ export function _resetPythonCache(): void {
 }
 
 function findSystemPython(): string {
+  // The interpreter names below are hardcoded literals (no user/env input), so
+  // this command is not injectable. The env-derived python path used elsewhere
+  // (execReader, checkDependencies) goes through execFileSync with no shell.
   for (const cmd of ["python3", "python"]) {
     try {
       execSync(`${cmd} --version`, { stdio: "pipe" });
@@ -269,7 +272,7 @@ export function checkDependencies(): { ok: boolean; message: string } {
   ensureReady();
   try {
     const python = resolvePython();
-    const version = execSync(`${python} -c "import ${MODULE}; print(${MODULE}.__version__)"`, {
+    const version = execFileSync(python, ["-c", `import ${MODULE}; print(${MODULE}.__version__)`], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();

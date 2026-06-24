@@ -297,11 +297,10 @@ describe("python.ts", () => {
 
   describe("checkDependencies", () => {
     it("should return ok when numbers-parser is available", () => {
-      // resolvePython's execSync (no encoding) returns Buffer;
-      // checkDependencies' execSync (encoding: 'utf-8') returns string with .trim()
-      mockedExecSync
-        .mockReturnValueOnce(Buffer.from("Python 3.11.0")) // findSystemPython
-        .mockReturnValueOnce("4.3.0\n" as unknown as Buffer); // import check
+      // findSystemPython probes the interpreter via execSync (Buffer);
+      // checkDependencies' import probe runs via execFileSync (no shell) -> string.
+      mockedExecSync.mockReturnValue(Buffer.from("Python 3.11.0")); // findSystemPython
+      mockedExecFileSync.mockReturnValue("4.3.0\n" as unknown as Buffer); // import probe
 
       const result = checkDependencies();
 
@@ -310,27 +309,14 @@ describe("python.ts", () => {
       expect(result.message).toContain("4.3.0");
     });
 
-    it("should return not ok when numbers-parser import fails", async () => {
-      vi.resetModules();
-      const localExecSync = vi.fn();
-
-      vi.doMock("node:child_process", () => ({
-        execFileSync: vi.fn(),
-        execSync: localExecSync,
-      }));
-
-      vi.doMock("node:fs", () => ({
-        existsSync: vi.fn().mockReturnValue(false),
-        readFileSync: vi.fn().mockReturnValue("numbers-parser\n"),
-      }));
-
-      // First call (findSystemPython) succeeds, second call (import check) fails
-      localExecSync.mockReturnValueOnce(Buffer.from("Python 3.11.0")).mockImplementationOnce(() => {
+    it("should return not ok when numbers-parser import fails", () => {
+      // findSystemPython succeeds (execSync); the execFileSync import probe throws.
+      mockedExecSync.mockReturnValue(Buffer.from("Python 3.11.0")); // findSystemPython
+      mockedExecFileSync.mockImplementation(() => {
         throw new Error("ModuleNotFoundError");
       });
 
-      const mod = await import("../../utils/python.js");
-      const result = mod.checkDependencies();
+      const result = checkDependencies();
 
       expect(result.ok).toBe(false);
       expect(result.message).toContain("numbers-parser not installed");
