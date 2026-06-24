@@ -6,6 +6,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that e
 [![npm downloads](https://img.shields.io/npm/dm/apple-numbers-mcp)](https://www.npmjs.com/package/apple-numbers-mcp)
 [![node](https://img.shields.io/node/v/apple-numbers-mcp)](https://www.npmjs.com/package/apple-numbers-mcp)
 [![CI](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sweetrb/apple-numbers-mcp/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sweetrb/apple-numbers-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sweetrb/apple-numbers-mcp)
 [![platform: macOS](https://img.shields.io/badge/platform-macOS-111?logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io)
