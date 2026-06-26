@@ -19,3 +19,7 @@ vitest.config.ts.timestamp-*
 # Test fixtures (generated, not committed)
 test/fixtures/*.numbers
 test/fixtures/_test_*
+
+# Python bytecode (sidecar)
+__pycache__/
+*.pyc
