@@ -1,2 +1,5 @@
+# pnpm build-script approvals (pnpm 11 reads these only from here, not
+# package.json's `pnpm` field, `.npmrc`, or v10's `onlyBuiltDependencies`).
+# esbuild ships a native binary and needs its postinstall to run.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
