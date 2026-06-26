@@ -48,18 +48,6 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
 
-      - name: Upgrade npm (OIDC trusted publishing needs npm >= 11.5.1)
-        # Retry: the global install hits the live registry and has flaked on
-        # transient ECONNRESET, aborting releases. Try up to 3 times.
-        run: |
-          for i in 1 2 3; do
-            npm install -g npm@latest && exit 0
-            echo "npm upgrade attempt $i failed; retrying in 5s…" >&2
-            sleep 5
-          done
-          echo "::error::npm upgrade failed after 3 attempts" >&2
-          exit 1
-
       - name: Check if version is already published
         id: check
         run: |
@@ -93,12 +81,15 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         run: pnpm run build
 
-      - name: Publish to npm
+      - name: Publish to npm (pnpm + OIDC trusted publishing)
         if: steps.check.outputs.skip == 'false'
-        # OIDC trusted publishing — no token. Requires id-token: write (above),
-        # npm >= 11.5.1 (upgraded above), and a Trusted Publisher configured for
-        # this package on npmjs.com (GitHub Actions → sweetrb/apple-numbers-mcp, publish.yml).
-        run: npm publish --provenance
+        # Phase 2 of the pnpm migration: release with `pnpm publish` instead of
+        # `npm publish`. OIDC trusted publishing — no token. Requires id-token:
+        # write (above) and a Trusted Publisher configured for this package on
+        # npmjs.com (GitHub Actions → sweetrb/apple-numbers-mcp, publish.yml).
+        # --no-git-checks: the worktree is clean from a fresh checkout, but pnpm's
+        # default branch/cleanliness guard is unnecessary in CI.
+        run: pnpm publish --provenance --no-git-checks
 
       - name: Create GitHub Release (keep Releases in sync with npm)
         if: steps.check.outputs.skip == 'false'
