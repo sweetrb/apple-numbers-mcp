@@ -350,7 +350,11 @@ server.registerTool(
         .max(MAX_BATCH)
         .optional()
         .describe("Optional data rows (array of arrays)"),
-      sheetName: z.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
+      sheetName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Sheet name (default: 'Sheet 1')"),
       tableName: z
         .string()
         .max(MAX_NAME_LEN)
@@ -391,7 +395,9 @@ server.registerTool(
       col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       value: z
         .union([z.string(), z.number(), z.boolean(), z.null()])
-        .describe("Value to write. null is a no-op — it leaves the cell unchanged (it does NOT clear it)."),
+        .describe(
+          "Value to write. null is a no-op — it leaves the cell unchanged (it does NOT clear it)."
+        ),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
       type: z
@@ -641,7 +647,11 @@ server.registerTool(
         .enum(["auto", "csv", "tsv", "json"])
         .optional()
         .describe("Input format (default: auto-detect from extension)"),
-      sheetName: z.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
+      sheetName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Sheet name (default: 'Sheet 1')"),
       tableName: z
         .string()
         .max(MAX_NAME_LEN)

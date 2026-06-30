@@ -278,7 +278,11 @@ server.registerTool("create-spreadsheet", {
             .max(MAX_BATCH)
             .optional()
             .describe("Optional data rows (array of arrays)"),
-        sheetName: z.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
+        sheetName: z
+            .string()
+            .max(MAX_NAME_LEN)
+            .optional()
+            .describe("Sheet name (default: 'Sheet 1')"),
         tableName: z
             .string()
             .max(MAX_NAME_LEN)
@@ -500,7 +504,11 @@ server.registerTool("import-csv", {
             .enum(["auto", "csv", "tsv", "json"])
             .optional()
             .describe("Input format (default: auto-detect from extension)"),
-        sheetName: z.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
+        sheetName: z
+            .string()
+            .max(MAX_NAME_LEN)
+            .optional()
+            .describe("Sheet name (default: 'Sheet 1')"),
         tableName: z
             .string()
             .max(MAX_NAME_LEN)
