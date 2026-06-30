@@ -86,7 +86,7 @@ npm install -g github:sweetrb/apple-numbers-mcp
 pip3 install numbers-parser
 ```
 
-Or, if you cloned the repo, run `npm run setup` to create a project-local Python venv with `numbers-parser` pre-installed.
+Or, if you cloned the repo, run `pnpm run setup` to create a project-local Python venv with `numbers-parser` pre-installed.
 
 **3. Add to Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
@@ -110,11 +110,11 @@ Or, if you cloned the repo, run `npm run setup` to create a project-local Python
 This repo ships a `.mcp.json` at its root so that, when you run `claude` from inside a clone, the server is registered automatically as a **project-scope** server — no manual config needed. Before launching, run **both**:
 
 ```bash
-npm run build    # compile TypeScript to build/
-npm run setup    # create the ./venv the Python sidecar needs
+pnpm run build    # compile TypeScript to build/
+pnpm run setup    # create the ./venv the Python sidecar needs
 ```
 
-`npm run setup` is required because this is a Python-sidecar server: it shells out to `./venv/bin/python3` running `numbers-parser`. Without the venv, the server starts but every tool call fails. Then launch Claude Code from the repo directory and approve the server when prompted.
+`pnpm run setup` is required because this is a Python-sidecar server: it shells out to `./venv/bin/python3` running `numbers-parser`. Without the venv, the server starts but every tool call fails. Then launch Claude Code from the repo directory and approve the server when prompted.
 
 The entrypoint is written as:
 
@@ -132,7 +132,7 @@ The entrypoint is written as:
 
 - **macOS or Linux** — `numbers-parser` reads the file format directly, so most tools work anywhere. **Formatting and formula tools require macOS with Numbers.app.**
 - **Node.js 20+** — Required for the MCP server
-- **Python 3.11+** — the `numbers-parser` library installs automatically into a project-local venv on first use (or pre-warm with `npm run setup`). numbers-parser requires Python ≥ 3.10; macOS ships 3.9, so install a newer Python first (e.g. `brew install python@3.12`).
+- **Python 3.11+** — the `numbers-parser` library installs automatically into a project-local venv on first use (or pre-warm with `pnpm run setup`). numbers-parser requires Python ≥ 3.10; macOS ships 3.9, so install a newer Python first (e.g. `brew install python@3.12`).
 - **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
 
 ## Features
@@ -413,14 +413,24 @@ Add a new table to an existing sheet.
 
 #### `rename-sheet` / `rename-table`
 
-Rename a sheet or table.
+Rename a sheet or table. You identify the target by its **current** name via the optional `sheet` / `table` parameters (omit them to target the first sheet / first table); there is no `oldName` input — the old name is returned in the result, not passed in.
+
+**`rename-sheet`**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Path to the `.numbers` file |
-| (rename-sheet) `oldName` / `newName` | string | Yes | Current and new sheet name |
-| (rename-table) `sheet` | string | No | Sheet containing the table |
-| (rename-table) `oldName` / `newName` | string | Yes | Current and new table name |
+| `newName` | string | Yes | New name for the sheet |
+| `sheet` | string | No | Current sheet name (default: first sheet) |
+
+**`rename-table`**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Path to the `.numbers` file |
+| `newName` | string | Yes | New name for the table |
+| `sheet` | string | No | Sheet containing the table (default: first sheet) |
+| `table` | string | No | Current table name (default: first table) |
 
 ---
 
@@ -467,7 +477,22 @@ Apply font, color, number format, and alignment to a single cell.
 | `table` | string | Yes | Table name |
 | `row` | number | Yes | 0-based row |
 | `col` | number | Yes | 0-based column |
-| `style` | object | Yes | `{font?, fontSize?, color?, fillColor?, bold?, italic?, alignment?, numberFormat?, ...}` |
+| `style` | object | Yes | Style properties to set (all optional) — see the table below |
+
+**`style` object fields** (all optional; omit a field to leave it unchanged):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fontName` | string | Font name, e.g. `"Helvetica-Bold"`, `"HelveticaNeue"`. There is no separate `bold`/`italic` flag — pick a font face that already encodes the weight/style. |
+| `fontSize` | number | Font size in points |
+| `textColor` | `{red, green, blue}` | Text color, RGB with each channel **0–65535** |
+| `backgroundColor` | `{red, green, blue}` | Cell fill color, RGB with each channel **0–65535** |
+| `format` | enum | Cell number format: `"automatic"`, `"number"`, `"currency"`, `"date and time"`, `"duration"`, `"fraction"`, `"scientific"`, `"numeral system"`, `"checkbox"`, `"star rating"`, `"text"` |
+| `alignment` | enum | Horizontal alignment: `"auto align"`, `"left"`, `"center"`, `"right"`, `"justify"` |
+| `verticalAlignment` | enum | Vertical alignment: `"top"`, `"center"`, `"bottom"` |
+| `textWrap` | boolean | Enable text wrapping |
+
+Example: `{ "fontName": "Helvetica-Bold", "fontSize": 14, "textColor": { "red": 65535, "green": 0, "blue": 0 }, "alignment": "center" }`
 
 ---
 
@@ -480,7 +505,7 @@ Apply styles to multiple cells in a single operation.
 | `path` | string | Yes | Path to the `.numbers` file |
 | `sheet` | string | Yes | Sheet name |
 | `table` | string | Yes | Table name |
-| `entries` | array | Yes | Array of `{row, col, style}` objects |
+| `entries` | array | Yes | Array of `{row, col, style}` objects — each `style` uses the same fields documented under [`set-cell-style`](#set-cell-style) |
 
 ---
 
@@ -579,9 +604,9 @@ pip3 install numbers-parser
 ```bash
 git clone https://github.com/sweetrb/apple-numbers-mcp.git
 cd apple-numbers-mcp
-npm install
-npm run setup    # creates ./venv and installs numbers-parser
-npm run build
+pnpm install
+pnpm run setup    # creates ./venv and installs numbers-parser
+pnpm run build
 ```
 
 If installed from source, use this configuration:
@@ -610,6 +635,8 @@ All configuration is optional — the server works out of the box.
 |----------|---------|-------------|
 | `APPLE_NUMBERS_MCP_MAX_BUFFER` | 50 MB (Python reader) / 64 MB (AppleScript) | Max bytes captured from a subprocess's stdout, applied to both the Python reader and the AppleScript layer. Raise it if a very large spreadsheet is truncated; lower it to cap memory. |
 | `APPLE_NUMBERS_MCP_CONFIG_FILE` | `~/Library/Application Support/apple-numbers-mcp/config.json` | Path to the JSON config file (see below). |
+| `APPLE_NUMBERS_MCP_NO_AUTO_SETUP` | unset (auto-setup on) | Set to a truthy value (`1`, `true`) to disable the one-time automatic creation of the Python venv. When set, the server will not run `setup.sh` on its own — you must provide `numbers-parser` yourself (`pip3 install numbers-parser` or `pnpm run setup`). |
+| `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` | `300000` (5 minutes) | Timeout in milliseconds for the automatic venv bootstrap (`setup.sh`). Raise it on a slow network where the `numbers-parser` pip install would otherwise time out. |
 
 ### Configuration file (when the host strips `env`)
 
@@ -666,6 +693,7 @@ The summary below is the quick version.
 | No charts or images | Not exposed by `numbers-parser` |
 | Sheet deletion not supported | Not exposed by `numbers-parser` |
 | Computed-value writes only | `set-cell` / `add-rows` etc. write computed values; use `set-formula` to write formulas |
+| Concurrent writes are last-writer-wins | Saves are atomic (no torn files), but overlapping writes to the same file can lose updates — serialize writes per file |
 | Date filter format | ISO 8601 (`YYYY-MM-DD` or full ISO datetime) |
 
 These are tracked for future releases. The underlying `numbers-parser` library has partial support for styles via its `Style` API, which provides a path forward for some of these.
@@ -680,7 +708,7 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 
 ### `apple-numbers` server fails to connect when run from a clone
 - Launch `claude` from inside the repo directory so `CLAUDE_PROJECT_DIR` resolves to the repo root (the bare `.` fallback is unreliable).
-- Run **both** `npm run build` and `npm run setup` first — `build` compiles the entrypoint, `setup` creates the `./venv` the Python sidecar needs.
+- Run **both** `pnpm run build` and `pnpm run setup` first — `build` compiles the entrypoint, `setup` creates the `./venv` the Python sidecar needs.
 - Run `claude mcp list` to check for conflicting scopes; project-scope `.mcp.json` outranks a user-scope `apple-numbers` entry, and a local-scope entry outranks both.
 - If the server is listed as pending, approve the project-scope server when Claude Code prompts.
 
@@ -701,16 +729,16 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 ## Development
 
 ```bash
-npm install              # Install dependencies
-npm run setup            # Create ./venv with numbers-parser
-npm run build            # Compile TypeScript
-npm test                 # Unit tests (mocked)
-npm run test:integration # Integration tests against real .numbers fixtures
-npm run test:all         # Both
-npm run test:coverage    # Unit tests with coverage report
-npm run typecheck        # Type-check without emitting
-npm run lint             # Check code style
-npm run format           # Format code
+pnpm install              # Install dependencies
+pnpm run setup            # Create ./venv with numbers-parser
+pnpm run build            # Compile TypeScript
+pnpm test                 # Unit tests (mocked)
+pnpm run test:integration # Integration tests against real .numbers fixtures
+pnpm run test:all         # Both
+pnpm run test:coverage    # Unit tests with coverage report
+pnpm run typecheck        # Type-check without emitting
+pnpm run lint             # Check code style
+pnpm run format           # Format code
 ```
 
 ### Integration tests
@@ -718,9 +746,9 @@ npm run format           # Format code
 Integration tests exercise the full pipeline against real `.numbers` fixture files. Generate the fixtures first, then run:
 
 ```bash
-npm run setup
+pnpm run setup
 ./venv/bin/python3 test/fixtures/generate-fixtures.py
-npm run test:all
+pnpm run test:all
 ```
 
 Unit tests run everywhere; integration tests auto-skip when fixtures or `numbers-parser` are not available.

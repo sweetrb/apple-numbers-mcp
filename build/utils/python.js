@@ -127,6 +127,10 @@ function bootstrapVenv() {
         const out = execFileSync("bash", [setup], {
             encoding: "utf-8",
             timeout: bootstrapTimeoutMs(),
+            // A chatty pip install (numbers-parser pulls in pandas etc.) easily exceeds
+            // Node's ~1 MB default maxBuffer, which would throw ENOBUFS and fail an
+            // otherwise-successful setup. Give it generous headroom.
+            maxBuffer: 64 * 1024 * 1024,
             stdio: ["ignore", "pipe", "pipe"],
             env: process.env,
         });

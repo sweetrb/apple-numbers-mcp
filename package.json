@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers-mcp",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "packageManager": "pnpm@11.9.0",
   "description": "MCP server for Apple Numbers - read, write, search, and format .numbers spreadsheets via Claude and other AI assistants",
   "type": "module",

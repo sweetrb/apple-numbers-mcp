@@ -285,8 +285,14 @@ def cmd_cell(args):
     print(json.dumps(result))
 
 
-def _coerce_value(raw, type_hint=None):
-    """Coerce a JSON value to the appropriate Python type for writing."""
+def _coerce_value(raw, type_hint=None, where=None):
+    """Coerce a JSON value to the appropriate Python type for writing.
+
+    `where` is an optional human-readable location (e.g. "cell (3,2)") that is
+    woven into error messages so a bad value points the caller at the offending
+    cell instead of surfacing a raw "could not convert string to float" error.
+    """
+    loc = f" at {where}" if where else ""
     if raw is None:
         return None
     if type_hint == "boolean" or (type_hint is None and isinstance(raw, bool)):
@@ -294,11 +300,25 @@ def _coerce_value(raw, type_hint=None):
     if type_hint == "number" or (type_hint is None and isinstance(raw, (int, float))):
         if isinstance(raw, float) and raw == int(raw):
             return int(raw)
-        return raw if isinstance(raw, (int, float)) else float(raw)
+        if isinstance(raw, (int, float)):
+            return raw
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Cannot write value {raw!r}{loc} as a number. "
+                f"Provide a numeric value, or omit type=\"number\" to store it as text."
+            )
     if type_hint == "date":
         from datetime import datetime
         if isinstance(raw, str):
-            return datetime.fromisoformat(raw)
+            try:
+                return datetime.fromisoformat(raw)
+            except ValueError:
+                raise ValueError(
+                    f"Cannot write value {raw!r}{loc} as a date. "
+                    f"Dates must be ISO 8601 (e.g. \"2025-06-01\" or a full ISO datetime)."
+                )
         return raw
     # Default: string
     return str(raw)
@@ -327,7 +347,7 @@ def cmd_create(args):
     rows_written = 0
     for row_idx, row in enumerate(rows, start=1):
         for col_idx, val in enumerate(row):
-            coerced = _coerce_value(val)
+            coerced = _coerce_value(val, where=f"cell ({row_idx},{col_idx})")
             if coerced is not None:
                 table.write(row_idx, col_idx, coerced)
         rows_written += 1
@@ -349,7 +369,7 @@ def cmd_set_cell(args):
     sheet = _find_sheet(doc, args.sheet)
     table = _find_table(sheet, args.table)
     row, col = int(args.row), int(args.col)
-    value = _coerce_value(json.loads(args.value), args.type)
+    value = _coerce_value(json.loads(args.value), args.type, where=f"cell ({row},{col})")
     if value is not None:
         table.write(row, col, value)
     _atomic_save(doc, args.file)
@@ -373,7 +393,7 @@ def cmd_set_cells(args):
     cells_written = 0
     for upd in updates:
         row, col = int(upd["row"]), int(upd["col"])
-        value = _coerce_value(upd["value"], upd.get("type"))
+        value = _coerce_value(upd["value"], upd.get("type"), where=f"cell ({row},{col})")
         if value is not None:
             table.write(row, col, value)
         cells_written += 1
@@ -397,7 +417,7 @@ def cmd_add_rows(args):
     for row_offset, row in enumerate(rows):
         has_value = False
         for col_idx, val in enumerate(row):
-            coerced = _coerce_value(val)
+            coerced = _coerce_value(val, where=f"cell ({start_row + row_offset},{col_idx})")
             if coerced is not None:
                 table.write(start_row + row_offset, col_idx, coerced)
                 has_value = True
@@ -590,7 +610,7 @@ def cmd_update_rows(args):
         row_idx = int(upd["row"])
         values = upd["values"]
         for col_idx, val in enumerate(values):
-            coerced = _coerce_value(val)
+            coerced = _coerce_value(val, where=f"cell ({row_idx},{col_idx})")
             if coerced is not None:
                 table.write(row_idx, col_idx, coerced)
         rows_updated += 1
