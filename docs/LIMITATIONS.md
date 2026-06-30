@@ -116,6 +116,25 @@ bulk writes through the server, so disk and app agree. If you must keep it open,
 read back with `read-table` / `get-cell` after writes to confirm the result landed,
 and avoid editing the same cells by hand in Numbers.app at the same time.
 
+## Concurrent writes to the same file are last-writer-wins
+
+**Why:** Each write tool opens the `.numbers` file, applies its change to an
+in-memory document, and saves the **whole document** back. The save itself is
+**atomic** — every mutating command writes to a sibling temp file and `os.replace()`s
+it onto the target — so an interrupted or crashed write can never leave a torn or
+half-written file. But atomicity protects against *corruption*, **not** against
+*lost updates*: if two writes to the same file overlap (two agents, two server
+instances, or a server write racing a hand edit in Numbers.app), each loaded the
+document independently, and whichever saves **last** overwrites the other's change
+wholesale. There is no file locking, no merge, and no optimistic-concurrency check.
+
+**What to do:** **Serialize writes to a given file** — don't fan out concurrent
+mutations against the same `.numbers` file from multiple agents or sessions. Batch
+related edits into a single call (`set-cells-batch`, `update-rows`,
+`set-formulas-batch`) instead of many overlapping ones, finish one tool call before
+starting the next on the same file, and after a burst of writes read back with
+`read-table` / `get-cell` to confirm the final state is what you intended.
+
 ## macOS-only for writes; reads are cross-platform
 
 **Why:** Reads run anywhere numbers-parser runs (macOS or Linux). Writes/formatting

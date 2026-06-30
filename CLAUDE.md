@@ -33,7 +33,7 @@ format** a file you need Numbers.app and Automation permission.
 ## First-run requirements
 
 1. **Python read sidecar installed.** All reads shell out to numbers-parser
-   (Python). On a source clone, run `npm run setup` to create the project-local
+   (Python). On a source clone, run `pnpm run setup` to create the project-local
    venv at `./venv` with numbers-parser. On a global install,
    `pip3 install numbers-parser`. Without it, **every read** fails.
 2. **For writes only: Numbers.app + Automation permission.** Write/format tools
@@ -123,7 +123,7 @@ errors.
 
 | Error | Likely cause | What to do |
 |-------|--------------|------------|
-| "numbers-parser not installed. Run: npm run setup" | Python read sidecar/venv missing | Run `npm run setup` (source clone) or `pip3 install numbers-parser` (global) |
+| "numbers-parser not installed. Run: npm run setup" | Python read sidecar/venv missing | Run `pnpm run setup` (source clone) or `pip3 install numbers-parser` (global) |
 | "Not authorized to send Apple events to Numbers." | Host app lacks Automation permission for Numbers | Grant it (System Settings → Privacy & Security → Automation) or reset with `tccutil reset AppleEvents`; see [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md) |
 | "Numbers.app not running" / Numbers.app not found | Numbers.app not installed/openable (writes only) | Install/open Numbers.app once, then retry; reads still work without it |
 | "File not found" | Wrong path, or `~` not expanded by the caller | Check the path; ensure it ends in `.numbers` |

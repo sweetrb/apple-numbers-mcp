@@ -22,6 +22,22 @@ const version: string = pkg.version;
 
 const manager = new NumbersManager();
 
+// --- Input bounds (defense-in-depth) ---
+// Cap raw indices/dimensions/array sizes/string lengths so a bogus value
+// (e.g. 1e9) can't flow into numbers-parser's table.write(huge_row, …) and
+// blow up memory or wedge the sidecar. These ceilings are far above any real
+// spreadsheet yet small enough to reject obvious garbage.
+const MAX_INDEX = 1_000_000; // row/col index ceiling (Numbers tables are far smaller)
+const MAX_FONT_SIZE = 1000; // points
+const MAX_DIMENSION = 100_000; // column width / row height, in pixels
+const MAX_BATCH = 100_000; // entries in a single batch array
+const MAX_NAME_LEN = 1024; // sheet/table/font names
+const MAX_QUERY_LEN = 10_000; // free-text search query
+const MAX_HEADER_LEN = 1024; // a single header cell
+
+// A single header-cell string, length-capped for defense-in-depth.
+const headerCellSchema = z.string().max(MAX_HEADER_LEN);
+
 // --- Tool Definitions ---
 
 const server = new McpServer({
@@ -159,12 +175,14 @@ server.registerTool(
         .number()
         .int()
         .min(0)
+        .max(MAX_INDEX)
         .optional()
         .describe("Start row index, 0-based inclusive (default: 1, after header)"),
       endRow: z
         .number()
         .int()
         .min(0)
+        .max(MAX_INDEX)
         .optional()
         .describe("End row index, 0-based inclusive (default: last row)"),
       columns: z
@@ -207,7 +225,7 @@ server.registerTool(
       "Do not use when: you already know the cell's coordinates — use get-cell; or you want a whole table's contents — use read-table.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      query: z.string().describe("Text to search for (case-insensitive)"),
+      query: z.string().max(MAX_QUERY_LEN).describe("Text to search for (case-insensitive)"),
       sheet: z.string().optional().describe("Limit search to this sheet"),
     },
     outputSchema: {
@@ -288,8 +306,8 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).describe("Row index (0-based)"),
-      col: z.number().int().min(0).describe("Column index (0-based)"),
+      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       verbose: z.boolean().optional().describe("Include formula/metadata (default: false)"),
     },
     outputSchema: {
@@ -326,13 +344,22 @@ server.registerTool(
       "Safety: writes a .numbers file via the numbers-parser sidecar (does not require Numbers.app). The target path is written unconditionally — if a file already exists at that path it is OVERWRITTEN in place; choose a fresh path or confirm overwrite first.",
     inputSchema: {
       path: z.string().describe("Path for the new .numbers file"),
-      headers: z.array(z.string()).min(1).describe("Column header names"),
+      headers: z.array(headerCellSchema).min(1).max(MAX_BATCH).describe("Column header names"),
       rows: z
         .array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])))
+        .max(MAX_BATCH)
         .optional()
         .describe("Optional data rows (array of arrays)"),
-      sheetName: z.string().optional().describe("Sheet name (default: 'Sheet 1')"),
-      tableName: z.string().optional().describe("Table name (default: 'Table 1')"),
+      sheetName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Sheet name (default: 'Sheet 1')"),
+      tableName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Table name (default: 'Table 1')"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -364,9 +391,13 @@ server.registerTool(
       "Safety: modifies the .numbers file in place and OVERWRITES any existing data in the target cell.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      row: z.number().int().min(0).describe("Row index (0-based)"),
-      col: z.number().int().min(0).describe("Column index (0-based)"),
-      value: z.union([z.string(), z.number(), z.boolean(), z.null()]).describe("Value to write"),
+      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      value: z
+        .union([z.string(), z.number(), z.boolean(), z.null()])
+        .describe(
+          "Value to write. null is a no-op — it leaves the cell unchanged (it does NOT clear it)."
+        ),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
       type: z
@@ -407,11 +438,13 @@ server.registerTool(
       updates: z
         .array(
           z.object({
-            row: z.number().int().min(0).describe("Row index (0-based)"),
-            col: z.number().int().min(0).describe("Column index (0-based)"),
+            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             value: z
               .union([z.string(), z.number(), z.boolean(), z.null()])
-              .describe("Value to write"),
+              .describe(
+                "Value to write. null is a no-op — it leaves the cell unchanged (it does NOT clear it)."
+              ),
             type: z
               .enum(["string", "number", "boolean", "date"])
               .optional()
@@ -419,6 +452,7 @@ server.registerTool(
           })
         )
         .min(1)
+        .max(MAX_BATCH)
         .describe("Array of cell updates"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
@@ -453,7 +487,10 @@ server.registerTool(
       rows: z
         .array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])))
         .min(1)
-        .describe("Rows to append (array of arrays, one per row)"),
+        .max(MAX_BATCH)
+        .describe(
+          "Rows to append (array of arrays, one per row). A null in any cell position is a no-op — that cell is left unchanged rather than cleared."
+        ),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
     },
@@ -487,8 +524,18 @@ server.registerTool(
       "Safety: DESTRUCTIVE — requires explicit user confirmation; not undoable; the .numbers file is modified in place and the deleted rows cannot be recovered. Double-check the 0-based inclusive range before calling.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      startRow: z.number().int().min(0).describe("First row to delete (0-based, inclusive)"),
-      endRow: z.number().int().min(0).describe("Last row to delete (0-based, inclusive)"),
+      startRow: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_INDEX)
+        .describe("First row to delete (0-based, inclusive)"),
+      endRow: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_INDEX)
+        .describe("Last row to delete (0-based, inclusive)"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
     },
@@ -521,9 +568,13 @@ server.registerTool(
       "Safety: modifies the .numbers file in place. Additive (adds a new sheet) and does not overwrite existing data, but still mutates the file.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      sheetName: z.string().describe("Name for the new sheet"),
-      tableName: z.string().optional().describe("Name for the default table"),
-      headers: z.array(z.string()).optional().describe("Column headers for the default table"),
+      sheetName: z.string().max(MAX_NAME_LEN).describe("Name for the new sheet"),
+      tableName: z.string().max(MAX_NAME_LEN).optional().describe("Name for the default table"),
+      headers: z
+        .array(headerCellSchema)
+        .max(MAX_BATCH)
+        .optional()
+        .describe("Column headers for the default table"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -555,8 +606,12 @@ server.registerTool(
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
-      tableName: z.string().optional().describe("Name for the new table"),
-      headers: z.array(z.string()).optional().describe("Column headers for the new table"),
+      tableName: z.string().max(MAX_NAME_LEN).optional().describe("Name for the new table"),
+      headers: z
+        .array(headerCellSchema)
+        .max(MAX_BATCH)
+        .optional()
+        .describe("Column headers for the new table"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -592,8 +647,16 @@ server.registerTool(
         .enum(["auto", "csv", "tsv", "json"])
         .optional()
         .describe("Input format (default: auto-detect from extension)"),
-      sheetName: z.string().optional().describe("Sheet name (default: 'Sheet 1')"),
-      tableName: z.string().optional().describe("Table name (default: 'Table 1')"),
+      sheetName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Sheet name (default: 'Sheet 1')"),
+      tableName: z
+        .string()
+        .max(MAX_NAME_LEN)
+        .optional()
+        .describe("Table name (default: 'Table 1')"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -630,13 +693,16 @@ server.registerTool(
       updates: z
         .array(
           z.object({
-            row: z.number().int().min(0).describe("Row index (0-based)"),
+            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
             values: z
               .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
-              .describe("Column values for the entire row"),
+              .describe(
+                "Column values for the entire row. A null in any position is a no-op — that cell is left unchanged rather than cleared."
+              ),
           })
         )
         .min(1)
+        .max(MAX_BATCH)
         .describe("Array of row updates"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
@@ -668,7 +734,7 @@ server.registerTool(
       "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app).",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      newName: z.string().describe("New name for the sheet"),
+      newName: z.string().max(MAX_NAME_LEN).describe("New name for the sheet"),
       sheet: z.string().optional().describe("Current sheet name (default: first sheet)"),
     },
     outputSchema: {
@@ -697,7 +763,7 @@ server.registerTool(
       "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app).",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      newName: z.string().describe("New name for the table"),
+      newName: z.string().max(MAX_NAME_LEN).describe("New name for the table"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Current table name (default: first table)"),
     },
@@ -730,8 +796,8 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).describe("Row index (0-based)"),
-      col: z.number().int().min(0).describe("Column index (0-based)"),
+      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       formula: z.string().describe('Formula string (e.g., "=SUM(A2:A10)")'),
     },
     outputSchema: {
@@ -769,12 +835,13 @@ server.registerTool(
       formulas: z
         .array(
           z.object({
-            row: z.number().int().min(0).describe("Row index (0-based)"),
-            col: z.number().int().min(0).describe("Column index (0-based)"),
+            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             formula: z.string().describe("Formula string"),
           })
         )
         .min(1)
+        .max(MAX_BATCH)
         .describe("Array of formula assignments"),
     },
     outputSchema: {
@@ -802,8 +869,12 @@ const colorSchema = z.object({
 });
 
 const cellStyleSchema = z.object({
-  fontName: z.string().optional().describe('Font name (e.g., "Helvetica-Bold", "HelveticaNeue")'),
-  fontSize: z.number().optional().describe("Font size in points"),
+  fontName: z
+    .string()
+    .max(MAX_NAME_LEN)
+    .optional()
+    .describe('Font name (e.g., "Helvetica-Bold", "HelveticaNeue")'),
+  fontSize: z.number().min(0).max(MAX_FONT_SIZE).optional().describe("Font size in points"),
   textColor: colorSchema.optional().describe("Text color (RGB, 0-65535 per channel)"),
   backgroundColor: colorSchema.optional().describe("Background color (RGB, 0-65535 per channel)"),
   format: z
@@ -843,8 +914,8 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).describe("Row index (0-based)"),
-      col: z.number().int().min(0).describe("Column index (0-based)"),
+      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       style: cellStyleSchema.describe("Style properties to set"),
     },
     outputSchema: {
@@ -879,12 +950,13 @@ server.registerTool(
       entries: z
         .array(
           z.object({
-            row: z.number().int().min(0).describe("Row index (0-based)"),
-            col: z.number().int().min(0).describe("Column index (0-based)"),
+            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             style: cellStyleSchema,
           })
         )
         .min(1)
+        .max(MAX_BATCH)
         .describe("Array of cell style assignments"),
     },
     outputSchema: {
@@ -916,8 +988,8 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      col: z.number().int().min(0).describe("Column index (0-based)"),
-      width: z.number().min(0).describe("Width in pixels"),
+      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      width: z.number().min(0).max(MAX_DIMENSION).describe("Width in pixels"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -952,8 +1024,8 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).describe("Row index (0-based)"),
-      height: z.number().min(0).describe("Height in pixels"),
+      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      height: z.number().min(0).max(MAX_DIMENSION).describe("Height in pixels"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -988,10 +1060,10 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      startRow: z.number().int().min(0).describe("Top-left row (0-based)"),
-      startCol: z.number().int().min(0).describe("Top-left column (0-based)"),
-      endRow: z.number().int().min(0).describe("Bottom-right row (0-based)"),
-      endCol: z.number().int().min(0).describe("Bottom-right column (0-based)"),
+      startRow: z.number().int().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
+      startCol: z.number().int().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
+      endRow: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
+      endCol: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -1021,10 +1093,10 @@ server.registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      startRow: z.number().int().min(0).describe("Top-left row (0-based)"),
-      startCol: z.number().int().min(0).describe("Top-left column (0-based)"),
-      endRow: z.number().int().min(0).describe("Bottom-right row (0-based)"),
-      endCol: z.number().int().min(0).describe("Bottom-right column (0-based)"),
+      startRow: z.number().int().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
+      startCol: z.number().int().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
+      endRow: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
+      endCol: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
     },
     outputSchema: {
       path: z.string().optional(),

@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-06-30
+### Changed
+- **Input bounds (defense-in-depth).** Every numeric index/dimension and batch/string input now carries a sane upper bound so a bogus value (e.g. `1e9`) can't flow into `numbers-parser`'s `table.write(huge_row, …)` and blow up memory or wedge the sidecar. Row/column indices (and `read-table`'s `startRow`/`endRow`, `delete-rows` / `merge` / `unmerge` corners) are capped at 1,000,000; `fontSize` at 1000 pt; column width / row height at 100,000 px; batch arrays (`updates`, `rows`, `formulas`, `entries`, `headers`) at 100,000 elements; and free-text strings get reasonable length caps (`query` 10,000; sheet/table/font names 1,024; header cells 1,024). All ceilings are far above any real spreadsheet. No valid input is newly rejected.
+
+### Fixed
+- **Actionable number/date coercion errors.** Writing a non-numeric string to a cell typed as `number` (or a non-ISO string to a `date` cell) previously surfaced a raw Python `could not convert string to float: 'abc'`. The Python sidecar now catches these and raises a message that names the offending value and the cell — e.g. `Cannot write value 'abc' at cell (3,2) as a number. …` — across `set-cell`, `set-cells-batch`, `add-rows`, `update-rows`, and `create-spreadsheet`. Write behavior is unchanged.
+- **Bootstrap venv setup no longer risks `ENOBUFS`.** The one-time automatic venv bootstrap (`scripts/setup.sh`) ran `execFileSync` with Node's ~1 MB default `maxBuffer`; a chatty `pip install` (numbers-parser pulls in pandas, etc.) could exceed it and fail an otherwise-successful setup. It now uses a 64 MB buffer.
+
+### Docs
+- **Corrected the `set-cell-style` / `set-cells-style-batch` Tool Reference.** The README documented a `style` object with non-existent keys (`font`, `color`, `fillColor`, `bold`, `italic`, `numberFormat`). It now matches the real `cellStyleSchema` exactly: `fontName`, `fontSize`, `textColor`, `backgroundColor`, `format`, `alignment`, `verticalAlignment`, `textWrap` (colors are RGB 0–65535; there is no `bold`/`italic` flag — choose a font face that encodes the weight).
+- **Corrected the `rename-sheet` / `rename-table` parameter tables.** They invented an `oldName` *input*; the schemas actually take `{ path, newName, sheet?, table? }` and identify the target by the current `sheet`/`table` name (the old name is an output field). Split into two accurate tables.
+- **Documented `null`-cell semantics.** `null` in a cell value is a no-op — it leaves the cell unchanged (it does **not** clear it). Added to the `value`/`values`/`rows` descriptions for `set-cell`, `set-cells-batch`, `add-rows`, and `update-rows`.
+- **Documented two previously-undocumented env vars** in the README Configuration table: `APPLE_NUMBERS_MCP_NO_AUTO_SETUP` (disable the automatic venv bootstrap) and `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` (bootstrap timeout in ms).
+- **Documented the last-writer-wins risk for concurrent writes** to the same `.numbers` file in `docs/LIMITATIONS.md` (and the README summary): saves are atomic, so files are never torn, but overlapping writes can lose updates — serialize writes per file.
+- **Developer/contributor commands switched from `npm` to `pnpm`** in the README install/development blocks and CLAUDE.md (the repo is pinned to `pnpm@11.9.0`; CI and publish use pnpm). End-user `npx` / global-install invocations and the literal runtime error string (`numbers-parser not installed. Run: npm run setup`) are unchanged.
+
 ## [1.1.2] - 2026-06-25
 ### Fixed
 - Added a process-level uncaughtException/unhandledRejection safety net so a stray error or a broken stdout pipe (EPIPE) on client disconnect can no longer crash the long-lived server; EPIPE now exits cleanly.
