@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-07-03
+### Fixed
+- **`set-cell` / `set-cells-batch` now store a bare number as a real number cell.** Passing `value=30` (a JSON number, no explicit `type`) previously wrote a *text* cell, so `read-table` returned `"30"` instead of `30` — inconsistent with `create-spreadsheet`, `add-rows`, `update-rows`, and `import-csv`, which all store the same value numerically. (Some MCP clients also deliver a JSON number as its string form, e.g. `"30"`, which fell through to the text branch.) The sidecar's value coercion now auto-detects a clean numeric string as a number when no explicit type is given, so bare numeric writes round-trip as numbers. Detection is conservative: leading-zero strings (`"007"`), surrounding whitespace, thousands separators (`"12,000"`), currency (`"$5"`), and exponent/`inf`/`nan` forms stay text, and an explicit `type="string"` (or `type="number"`) override is always honored.
+
 ## [1.1.3] - 2026-06-30
 ### Changed
 - **Input bounds (defense-in-depth).** Every numeric index/dimension and batch/string input now carries a sane upper bound so a bogus value (e.g. `1e9`) can't flow into `numbers-parser`'s `table.write(huge_row, …)` and blow up memory or wedge the sidecar. Row/column indices (and `read-table`'s `startRow`/`endRow`, `delete-rows` / `merge` / `unmerge` corners) are capped at 1,000,000; `fontSize` at 1000 pt; column width / row height at 100,000 px; batch arrays (`updates`, `rows`, `formulas`, `entries`, `headers`) at 100,000 elements; and free-text strings get reasonable length caps (`query` 10,000; sheet/table/font names 1,024; header cells 1,024). All ceilings are far above any real spreadsheet. No valid input is newly rejected.
