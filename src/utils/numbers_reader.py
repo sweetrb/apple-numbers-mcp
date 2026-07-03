@@ -320,8 +320,60 @@ def _coerce_value(raw, type_hint=None, where=None):
                     f"Dates must be ISO 8601 (e.g. \"2025-06-01\" or a full ISO datetime)."
                 )
         return raw
+    # No explicit type: auto-detect a clean numeric string as a number so a bare
+    # numeric value stores as a real number cell, matching create-spreadsheet /
+    # add-rows / update-rows / import-csv (all of which store the same value
+    # numerically). Some MCP clients deliver a JSON number as its string form
+    # (e.g. "30"), which would otherwise land here and be written as text.
+    if type_hint is None and isinstance(raw, str):
+        num = _numeric_str_to_number(raw)
+        if num is not None:
+            return num
     # Default: string
     return str(raw)
+
+
+def _numeric_str_to_number(s):
+    """Return int/float if `s` is a clean numeric literal, else None.
+
+    Conservative on purpose: only a plain decimal integer or float is converted.
+    Strings that a user almost certainly means as text are left alone — a leading
+    zero (zip codes, IDs like "007"), surrounding whitespace, thousands
+    separators, currency symbols, hex/binary, inf/nan, and complex/exponent-only
+    forms all stay text. An explicit type="number" override still forces numeric
+    coercion via the branch above.
+    """
+    if not isinstance(s, str) or s == "":
+        return None
+    body = s[1:] if s[0] in "+-" else s
+    if body == "":
+        return None
+    # Reject leading-zero integers ("007", "0123") so identifier-like strings
+    # keep their exact text; a lone "0" and decimals like "0.5" are fine.
+    if body.isdigit():
+        if len(body) > 1 and body[0] == "0":
+            return None
+        try:
+            return int(s)
+        except ValueError:
+            return None
+    # Float form: require a decimal point and digits on at least one side; this
+    # naturally excludes "1e5", "inf", "nan", "1,000", "$5", "0x1f", etc.
+    if "." in body:
+        int_part, _, frac_part = body.partition(".")
+        if "." in frac_part:
+            return None
+        if not (int_part + frac_part).isdigit():
+            return None
+        if int_part == "" and frac_part == "":
+            return None
+        if len(int_part) > 1 and int_part[0] == "0":
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
 
 
 def cmd_create(args):

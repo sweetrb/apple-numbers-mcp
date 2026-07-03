@@ -260,6 +260,47 @@ describe.skipIf(!canRun)("Integration: Numbers Reader", () => {
       ]);
     });
 
+    it("should store a bare number set via set-cell as a real number (not text)", () => {
+      const outPath = join(tmpDir, "set-cell-numeric.numbers");
+      manager.createSpreadsheet(outPath, ["A", "B", "C", "D"], {
+        rows: [["x", "x", "x", "x"]],
+      });
+
+      // Bare JS number -> numeric cell (regression: previously stored as "30").
+      manager.setCell(outPath, 1, 0, 30);
+      // Clean numeric string with no explicit type -> also numeric, matching
+      // create-spreadsheet / add-rows / update-rows / import-csv.
+      manager.setCell(outPath, 1, 1, "42");
+      // Explicit type="string" override is preserved -> stays text.
+      manager.setCell(outPath, 1, 2, "50", { type: "string" });
+      // Leading-zero / identifier-like string stays text.
+      manager.setCell(outPath, 1, 3, "007");
+
+      const data = manager.readTable(outPath);
+      expect(data.rows[0][0]).toBe(30);
+      expect(data.rows[0][1]).toBe(42);
+      expect(data.rows[0][2]).toBe("50");
+      expect(data.rows[0][3]).toBe("007");
+    });
+
+    it("should store a bare number set via set-cells-batch as a real number", () => {
+      const outPath = join(tmpDir, "set-cells-numeric.numbers");
+      manager.createSpreadsheet(outPath, ["A", "B", "C"], {
+        rows: [["x", "x", "x"]],
+      });
+
+      manager.setCellsBatch(outPath, [
+        { row: 1, col: 0, value: 30 },
+        { row: 1, col: 1, value: "42" },
+        { row: 1, col: 2, value: "99", type: "string" },
+      ]);
+
+      const data = manager.readTable(outPath);
+      expect(data.rows[0][0]).toBe(30);
+      expect(data.rows[0][1]).toBe(42);
+      expect(data.rows[0][2]).toBe("99");
+    });
+
     it("should append rows to an existing table", () => {
       const outPath = join(tmpDir, "add-rows.numbers");
       manager.createSpreadsheet(outPath, ["Name", "Value"], {
