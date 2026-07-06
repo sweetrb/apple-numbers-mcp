@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-07-06
+### Fixed
+- **A bare `git clone` / marketplace install now runs the server with only Node present.** Tracking `build/` (a previous release) put the compiled entrypoint in git, but `build/index.js` still `import`ed its dependencies (`@modelcontextprotocol/sdk`, `zod`) from `node_modules/`, which a plain clone / marketplace install lacks — so the server died on `ERR_MODULE_NOT_FOUND` before it could complete the MCP handshake. The build now **esbuild-bundles `src/index.ts` into a single self-contained `build/index.js`** (`tsc --noEmit` still type-checks; esbuild does the bundling), so the marketplace/git clone starts on Node alone with no install step. This mirrors the fix @oliverames landed for apple-notes-mcp (#69) and apple-mail-mcp (#79), and the matching change in apple-photos-mcp. The Python sidecar path logic was made **bundle-safe** alongside: `getProjectRoot()` now walks up to the directory that owns `package.json` + `src/utils/numbers_reader.py` instead of assuming a fixed `build/utils/ → ../..` depth, so the collapsed single-file bundle (where `index.js` sits at `build/index.js`, one level shallower) still resolves `numbers_reader.py`, the venv, `requirements.txt`, and `scripts/setup.sh` correctly.
+
+### Changed
+- **`.gitignore` now tracks only the bundled entrypoint** (`build/*` then `!build/index.js`) — per-module `tsc` output (e.g. from `pnpm run dev`) stays ignored. Added `esbuild` as a devDependency; dropped the now-unused `tsc-alias` devDependency and the `types` package.json field.
+
 ## [1.1.4] - 2026-07-03
 ### Fixed
 - **`set-cell` / `set-cells-batch` now store a bare number as a real number cell.** Passing `value=30` (a JSON number, no explicit `type`) previously wrote a *text* cell, so `read-table` returned `"30"` instead of `30` — inconsistent with `create-spreadsheet`, `add-rows`, `update-rows`, and `import-csv`, which all store the same value numerically. (Some MCP clients also deliver a JSON number as its string form, e.g. `"30"`, which fell through to the text branch.) The sidecar's value coercion now auto-detects a clean numeric string as a number when no explicit type is given, so bare numeric writes round-trip as numbers. Detection is conservative: leading-zero strings (`"007"`), surrounding whitespace, thousands separators (`"12,000"`), currency (`"$5"`), and exponent/`inf`/`nan` forms stay text, and an explicit `type="string"` (or `type="number"`) override is always honored.
