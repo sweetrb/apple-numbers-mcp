@@ -17,7 +17,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 3. **Set up the Python sidecar** (creates a project-local venv with `numbers-parser`)
    ```bash
-   npm run setup        # requires Python 3.11+ (macOS ships 3.9 — install a newer one)
+   pnpm run setup       # requires Python 3.11+ (macOS ships 3.9 — install a newer one)
    ```
 
 4. **Build the project**

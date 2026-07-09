@@ -14,7 +14,12 @@ try:
     from numbers_parser import Document
 except ImportError:
     print(json.dumps({
-        "error": "numbers-parser not installed. Run: npm run setup"
+        "error": (
+            "numbers-parser not installed. Install it with: pip3 install numbers-parser "
+            "(requires Python >= 3.11; stock macOS ships 3.9 - brew install python@3.12), "
+            "or run scripts/setup.sh from a repo checkout. Run the doctor tool to diagnose. "
+            "See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
+        )
     }))
     sys.exit(1)
 

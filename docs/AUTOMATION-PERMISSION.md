@@ -122,9 +122,11 @@ After resetting, **fully quit and reopen the host app**, then run any write tool
 
 ## Verifying
 
-Run the **`doctor`** tool — it's the richest diagnostic and reports three checks
+Run the **`doctor`** tool — it's the richest diagnostic and reports four checks
 as `ok` / `warn` / `fail`:
 
+- **`python_interpreter`** — the resolved Python's path and version (warns when
+  older than 3.11; stock macOS ships 3.9).
 - **`numbers_parser`** — is the Python read sidecar installed (powers all reads).
 - **`numbers_app`** — is Numbers.app present (required for any write/format tool).
 - **`automation_permission`** — an informational reminder that write tools need

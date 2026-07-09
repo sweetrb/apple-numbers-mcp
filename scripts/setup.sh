@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Create a Python venv and install numbers-parser.
-# Run via: npm run setup
+# Run via: pnpm run setup (or: bash scripts/setup.sh)
 #
 set -euo pipefail
 
@@ -32,7 +32,7 @@ echo "    Using: $PYTHON ($($PYTHON --version))"
 if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
   echo "ERROR: Python >= 3.11 required, but '$PYTHON' is $($PYTHON --version 2>&1)." >&2
   echo "       macOS ships Python 3.9. Install a newer one, e.g.:" >&2
-  echo "         brew install python@3.12     # then re-run: npm run setup" >&2
+  echo "         brew install python@3.12     # then re-run: scripts/setup.sh" >&2
   echo "       or from https://www.python.org/downloads/" >&2
   exit 1
 fi

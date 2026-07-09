@@ -23,6 +23,7 @@ const mockedReadFileSync = vi.mocked(readFileSync);
 // Reset the cached python between tests by re-importing
 let runNumbersReader: typeof import("../../utils/python.js").runNumbersReader;
 let checkDependencies: typeof import("../../utils/python.js").checkDependencies;
+let getPythonInfo: typeof import("../../utils/python.js").getPythonInfo;
 
 describe("python.ts", () => {
   beforeEach(async () => {
@@ -48,6 +49,7 @@ describe("python.ts", () => {
     const mod = await import("../../utils/python.js");
     runNumbersReader = mod.runNumbersReader;
     checkDependencies = mod.checkDependencies;
+    getPythonInfo = mod.getPythonInfo;
   });
 
   afterEach(() => {
@@ -105,7 +107,11 @@ describe("python.ts", () => {
       const result = runNumbersReader("info", ["/test.numbers"]);
 
       expect(result.error).toContain("numbers-parser not installed");
-      expect(result.error).toContain("npm run setup");
+      expect(result.error).toContain("pip3 install numbers-parser");
+      expect(result.error).toContain("scripts/setup.sh");
+      expect(result.error).toContain(
+        "https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
+      );
       expect(result.error).toContain("APPLE_NUMBERS_MCP_NO_AUTO_SETUP");
     });
 
@@ -291,7 +297,34 @@ describe("python.ts", () => {
       const mod = await import("../../utils/python.js");
 
       // findSystemPython throws, which runNumbersReader doesn't catch.
-      expect(() => mod.runNumbersReader("info", ["/test.numbers"])).toThrow("Python 3 not found");
+      expect(() => mod.runNumbersReader("info", ["/test.numbers"])).toThrow(
+        "Python 3 not found on PATH"
+      );
+    });
+  });
+
+  describe("getPythonInfo", () => {
+    it("reports the resolved interpreter path and version", () => {
+      // findSystemPython probes via execSync; the --version read runs via execFileSync.
+      mockedExecSync.mockReturnValue(Buffer.from("Python 3.9.6"));
+      mockedExecFileSync.mockReturnValue("Python 3.9.6\n" as unknown as Buffer);
+
+      const info = getPythonInfo();
+
+      expect(info).toEqual({ path: "python3", version: "Python 3.9.6" });
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        "python3",
+        ["--version"],
+        expect.objectContaining({ encoding: "utf-8" })
+      );
+    });
+
+    it("returns null when no interpreter can be resolved", () => {
+      mockedExecSync.mockImplementation(() => {
+        throw new Error("not found");
+      });
+
+      expect(getPythonInfo()).toBeNull();
     });
   });
 

@@ -123,7 +123,7 @@ errors.
 
 | Error | Likely cause | What to do |
 |-------|--------------|------------|
-| "numbers-parser not installed. Run: npm run setup" | Python read sidecar/venv missing | Run `pnpm run setup` (source clone) or `pip3 install numbers-parser` (global) |
+| "numbers-parser not installed. Install it with: pip3 install numbers-parser ..." | Python read sidecar/venv missing (most common: `python3` < 3.11 - stock macOS ships 3.9) | Run `pnpm run setup` (source clone) or `pip3 install numbers-parser` (global); if Python is too old, `brew install python@3.12` first |
 | "Not authorized to send Apple events to Numbers." | Host app lacks Automation permission for Numbers | Grant it (System Settings → Privacy & Security → Automation) or reset with `tccutil reset AppleEvents`; see [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md) |
 | "Numbers.app not running" / Numbers.app not found | Numbers.app not installed/openable (writes only) | Install/open Numbers.app once, then retry; reads still work without it |
 | "File not found" | Wrong path, or `~` not expanded by the caller | Check the path; ensure it ends in `.numbers` |
