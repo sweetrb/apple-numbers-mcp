@@ -12,7 +12,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that e
 [![MCP](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io)
 
 <p align="center">
-  <img src="codex/assets/screenshot.png" alt="Apple Numbers MCP — read, write, search, and format spreadsheets from Codex, Claude, and other AI assistants" width="680">
+  <img src="https://raw.githubusercontent.com/sweetrb/apple-numbers-mcp/main/codex/assets/screenshot.png" alt="Apple Numbers MCP — read, write, search, and format spreadsheets from Codex, Claude, and other AI assistants" width="680">
 </p>
 
 ## What is This?
@@ -41,6 +41,12 @@ Install the sweetrb/apple-numbers-mcp MCP server so you can help me work with my
 
 Claude will handle the installation and configuration automatically. After install, you'll need to install `numbers-parser` (Python) — see [Requirements](#requirements) below.
 
+Or register it yourself in one deterministic line (no clone needed):
+
+```bash
+claude mcp add apple-numbers -s user -- npx -y apple-numbers-mcp
+```
+
 ### Using the Plugin Marketplace
 
 Install as a Claude Code plugin for automatic configuration and enhanced AI behavior:
@@ -51,6 +57,8 @@ Install as a Claude Code plugin for automatic configuration and enhanced AI beha
 ```
 
 This method also installs a **skill** that teaches Claude when and how to use Apple Numbers effectively.
+
+The plugin runs straight from its marketplace clone under `~/.claude/plugins/` (the clone lives at `~/.claude/plugins/marketplaces/apple-numbers-mcp/`). On the **first tool call** the server auto-bootstraps a project-local Python venv inside that directory with `numbers-parser` — a one-time setup that takes about a minute and **requires Python >= 3.11 on PATH** (stock macOS ships 3.9 — `brew install python@3.12` first). To pre-warm it instead of waiting on the first call, run `scripts/setup.sh` inside that install directory.
 
 ### Using the Codex Marketplace
 
@@ -71,14 +79,14 @@ numbers-parser`); see [Requirements](#requirements).
 
 Configuration for two more hosts is included — each registers the same `apple-numbers` MCP server (`npx -y apple-numbers-mcp`). All paths still need the `numbers-parser` Python sidecar available; see [Requirements](#requirements).
 
-- **[Hermes Agent](https://hermes-agent.nousresearch.com/)** (NousResearch) — Hermes has no plugin/marketplace drop-in. Add the server with `hermes mcp add apple-numbers --command npx --args -y apple-numbers-mcp`, or merge [`.hermes-plugin/config.yaml`](.hermes-plugin/config.yaml) into `~/.hermes/config.yaml`. Details: [`.hermes-plugin/README.md`](.hermes-plugin/README.md).
-- **[Antigravity](https://antigravity.google/)** (Google) — add the server entry from [`.antigravity-plugin/mcp_config.json`](.antigravity-plugin/mcp_config.json) to `~/.gemini/config/mcp_config.json` (or via Antigravity's MCP settings).
+- **[Hermes Agent](https://hermes-agent.nousresearch.com/)** (NousResearch) — Hermes has no plugin/marketplace drop-in. Add the server with `hermes mcp add apple-numbers --command npx --args -y apple-numbers-mcp`, or merge [`.hermes-plugin/config.yaml`](https://github.com/sweetrb/apple-numbers-mcp/blob/main/.hermes-plugin/config.yaml) into `~/.hermes/config.yaml`. Details: [`.hermes-plugin/README.md`](https://github.com/sweetrb/apple-numbers-mcp/blob/main/.hermes-plugin/README.md).
+- **[Antigravity](https://antigravity.google/)** (Google) — add the server entry from [`.antigravity-plugin/mcp_config.json`](https://github.com/sweetrb/apple-numbers-mcp/blob/main/.antigravity-plugin/mcp_config.json) to `~/.gemini/config/mcp_config.json` (or via Antigravity's MCP settings).
 
 ### Manual Installation
 
-**1. Install the server:**
+**1. Install the server** (from the npm registry):
 ```bash
-npm install -g github:sweetrb/apple-numbers-mcp
+npm install -g apple-numbers-mcp
 ```
 
 **2. Install numbers-parser** (the Python library this server depends on):
@@ -130,10 +138,10 @@ The entrypoint is written as:
 
 ## Requirements
 
-- **macOS or Linux** — `numbers-parser` reads the file format directly, so most tools work anywhere. **Formatting and formula tools require macOS with Numbers.app.**
+- **macOS** — the npm package is macOS-only (it declares `os: ["darwin"]`). Reads go through `numbers-parser` directly (no Numbers.app needed); **formatting and formula tools additionally require Numbers.app.**
 - **Node.js 20+** — Required for the MCP server
 - **Python 3.11+** — the `numbers-parser` library installs automatically into a project-local venv on first use (or pre-warm with `pnpm run setup`). numbers-parser requires Python ≥ 3.10; macOS ships 3.9, so install a newer Python first (e.g. `brew install python@3.12`).
-- **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
+- **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
 
 ## Features
 
@@ -179,7 +187,7 @@ The entrypoint is written as:
 |---------|-------------|
 | **Import CSV/TSV/JSON** | Convert a tabular file into a new `.numbers` spreadsheet |
 | **Health Check** | Verify Python 3 and numbers-parser are installed |
-| **Doctor** | Richer setup diagnostic — read sidecar, Numbers.app, and Automation permission, each reported ok / warn / fail with actionable advice |
+| **Doctor** | Richer setup diagnostic — Python interpreter (path + version), read sidecar, Numbers.app, and Automation permission, each reported ok / warn / fail with actionable advice |
 
 All tools also return **structured JSON** (`structuredContent`) alongside the human-readable text, so agents can consume results without parsing prose.
 
@@ -210,11 +218,11 @@ Verify Python 3 and `numbers-parser` are installed and reachable from the server
 
 #### `doctor`
 
-Run a full setup diagnostic with three separate checks: `numbers_parser` (the read sidecar — required for all reads/exports), `numbers_app` (Numbers.app present — required for write/format tools), and `automation_permission` (an informational reminder that write tools need Automation permission for Numbers.app). Each is reported as ok / warn / fail with actionable advice. This is the richer counterpart to `health-check`; reach for it first when a tool returns a permission or setup error.
+Run a full setup diagnostic with four separate checks: `python_interpreter` (the resolved Python's path and version — warns when it's older than 3.11, the most common setup failure since stock macOS ships 3.9), `numbers_parser` (the read sidecar — required for all reads/exports), `numbers_app` (Numbers.app present — required for write/format tools), and `automation_permission` (an informational reminder that write tools need Automation permission for Numbers.app). Each is reported as ok / warn / fail with actionable advice. This is the richer counterpart to `health-check`; reach for it first when a tool returns a permission or setup error.
 
 **Parameters:** None
 
-**Returns:** A per-check report. The `structuredContent` carries the raw `{ healthy, checks[] }`, where each check has `name`, `status` (`ok`/`warn`/`fail`), and `detail`. Reads don't need Automation permission, but writes do — see [docs/AUTOMATION-PERMISSION.md](docs/AUTOMATION-PERMISSION.md).
+**Returns:** A per-check report. The `structuredContent` carries the raw `{ healthy, checks[] }`, where each check has `name`, `status` (`ok`/`warn`/`fail`), and `detail`. Reads don't need Automation permission, but writes do — see [docs/AUTOMATION-PERMISSION.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md).
 
 ---
 
@@ -595,7 +603,7 @@ AI: [calls import-csv with inputPath, outputPath]
 ### npm (Recommended)
 
 ```bash
-npm install -g github:sweetrb/apple-numbers-mcp
+npm install -g apple-numbers-mcp
 pip3 install numbers-parser
 ```
 
@@ -608,6 +616,8 @@ pnpm install
 pnpm run setup    # creates ./venv and installs numbers-parser
 pnpm run build
 ```
+
+Installing the repo directly from GitHub (`npm install -g github:sweetrb/apple-numbers-mcp`) also counts as a from-source install: it runs the repo's build on your machine and **requires pnpm**. Prefer the published npm package above unless you specifically want unreleased code.
 
 If installed from source, use this configuration:
 ```json
@@ -683,7 +693,7 @@ This is the same Python-sidecar pattern used by [apple-photos-mcp](https://githu
 ## Known Limitations
 
 For the full rundown — the read-vs-write split, AppleScript-only formulas/styles,
-indexing, dates, format lag, and concurrent edits — see **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)**.
+indexing, dates, format lag, and concurrent edits — see **[docs/LIMITATIONS.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/LIMITATIONS.md)**.
 The summary below is the quick version.
 
 | Limitation | Reason |
@@ -702,8 +712,10 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 
 ## Troubleshooting
 
-### "numbers-parser not installed. Run: npm run setup"
-- Run `pip3 install numbers-parser` (global) or `npm run setup` (project-local venv).
+### "numbers-parser not installed"
+- **Most common cause: your `python3` is older than 3.11** — stock macOS ships Python 3.9, which `numbers-parser` can't run on. Install a newer Python (`brew install python@3.12`), then simply retry the tool call: the venv rebuilds automatically.
+- Otherwise, install the library directly: `pip3 install numbers-parser` (global Python), or run `scripts/setup.sh` from a repo checkout (`pnpm run setup`) to build the project-local venv.
+- Run the **`doctor`** tool — it reports the resolved Python interpreter path and version, so a too-old stock Python is visible at a glance.
 - If you used a virtualenv, make sure it's the one at `./venv/` in the project directory.
 
 ### `apple-numbers` server fails to connect when run from a clone
@@ -719,7 +731,7 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 ### Formatting / formula tools fail with "Numbers.app not running" or "Not authorized to send Apple events to Numbers"
 - Open Numbers.app at least once. macOS will prompt for automation permission — accept it.
 - Verify in **System Settings → Privacy & Security → Automation**, or reset with `tccutil reset AppleEvents`.
-- Run the **`doctor`** tool to confirm your setup — it reports the Numbers.app and Automation-permission checks separately. See the [Automation Permission guide](docs/AUTOMATION-PERMISSION.md). Reads don't need this permission; only writes do.
+- Run the **`doctor`** tool to confirm your setup — it reports the Numbers.app and Automation-permission checks separately. See the [Automation Permission guide](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md). Reads don't need this permission; only writes do.
 
 ### Output looks wrong (dates as ISO, floats with decimals)
 - The server normalizes dates to ISO 8601 and rounds floats that are within `1e-9` of an integer. If you want raw values, file an issue.
@@ -766,7 +778,7 @@ A software consulting, contracting, and development company.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details. This project is not affiliated with Apple Inc. or the [numbers-parser](https://pypi.org/project/numbers-parser/) project.
+MIT License - see [LICENSE](https://github.com/sweetrb/apple-numbers-mcp/blob/main/LICENSE) for details. This project is not affiliated with Apple Inc. or the [numbers-parser](https://pypi.org/project/numbers-parser/) project.
 
 ## Contributing
 
@@ -783,4 +795,4 @@ Part of a family of macOS MCP servers:
 
 ## Recurring macOS permission prompts
 
-If macOS keeps re-prompting for Full Disk Access or Automation for `node` (often after a `brew upgrade`), see [docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md](docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md) — the fix is to run this server under the official, Developer-ID-signed Node so the grant survives Node updates.
+If macOS keeps re-prompting for Full Disk Access or Automation for `node` (often after a `brew upgrade`), see [docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md) — the fix is to run this server under the official, Developer-ID-signed Node so the grant survives Node updates.

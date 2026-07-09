@@ -78,7 +78,7 @@ server.registerTool(
   {
     description:
       "Use when: a tool returns a permission or setup error, or you want the full setup diagnostic before writing/formatting.\n" +
-      "Returns: three checks — numbers-parser (read sidecar), Numbers.app (needed for writes), and Automation permission — each as ok/warn/fail with actionable advice.\n" +
+      "Returns: four checks — the resolved Python interpreter (path + version), numbers-parser (read sidecar), Numbers.app (needed for writes), and Automation permission — each as ok/warn/fail with actionable advice.\n" +
       "Do not use when: you only need the lightweight read-sidecar version check — use health-check instead.",
     inputSchema: {},
     outputSchema: {

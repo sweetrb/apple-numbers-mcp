@@ -99,7 +99,7 @@ to each new format version. A file saved by a very new Numbers.app can occasiona
 read incompletely (or error) on an older numbers-parser.
 
 **What to do:** Keep numbers-parser current (`pip3 install -U numbers-parser`, or
-re-run `npm run setup`). If a read fails or looks wrong on a freshly-saved file,
+re-run `pnpm run setup`). If a read fails or looks wrong on a freshly-saved file,
 upgrade numbers-parser first. Check the installed version with `health-check` /
 `doctor`.
 

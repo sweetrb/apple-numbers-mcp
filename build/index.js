@@ -21421,7 +21421,7 @@ function findSystemPython() {
     }
   }
   throw new Error(
-    'Python 3 not found. Run "npm run setup" to create a venv, or ensure python3 is on PATH.'
+    "Python 3 not found on PATH. Install Python >= 3.11 (stock macOS ships 3.9 - brew install python@3.12), or run scripts/setup.sh from a repo checkout. See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
   );
 }
 function resolvePython() {
@@ -21496,7 +21496,7 @@ function looksLikeMissingDep(message) {
   return /not installed|No module named|ModuleNotFoundError/i.test(message);
 }
 function setupHint() {
-  return `Run: npm run setup (or set ${ENV_PREFIX}_NO_AUTO_SETUP=0 to allow automatic setup).`;
+  return `Install it with: pip3 install numbers-parser (requires Python >= 3.11; stock macOS ships 3.9 - brew install python@3.12), or run scripts/setup.sh from a repo checkout. Run the doctor tool to diagnose, and see https://github.com/sweetrb/apple-numbers-mcp#troubleshooting (set ${ENV_PREFIX}_NO_AUTO_SETUP=0 to allow automatic setup).`;
 }
 var DEFAULT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 function getMaxBuffer() {
@@ -21550,6 +21550,18 @@ function runNumbersReader(command, args, timeoutMs = 3e4) {
     }
   }
   return result;
+}
+function getPythonInfo() {
+  try {
+    const python = resolvePython();
+    const version3 = execFileSync(python, ["--version"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    return { path: python, version: version3 };
+  } catch {
+    return null;
+  }
 }
 function checkDependencies() {
   ensureReady();
@@ -22068,17 +22080,41 @@ var NUMBERS_APP_PATHS = ["/Applications/Numbers.app", "/System/Applications/Numb
 function runDoctor(_manager) {
   const checks = [];
   try {
+    const info = getPythonInfo();
+    if (info) {
+      const m = /Python (\d+)\.(\d+)/.exec(info.version);
+      const tooOld = m !== null && (Number(m[1]) < 3 || Number(m[1]) === 3 && Number(m[2]) < 11);
+      checks.push({
+        name: "python_interpreter",
+        status: tooOld ? "warn" : "ok",
+        detail: tooOld ? `${info.version} at ${info.path} \u2014 numbers-parser requires Python >= 3.11 (stock macOS ships 3.9). Install a newer Python (brew install python@3.12) and retry \u2014 the venv rebuilds automatically. See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting` : `${info.version} (${info.path})`
+      });
+    } else {
+      checks.push({
+        name: "python_interpreter",
+        status: "fail",
+        detail: "Python 3 not found on PATH. Install Python >= 3.11 (e.g. brew install python@3.12). See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
+      });
+    }
+  } catch (e) {
+    checks.push({
+      name: "python_interpreter",
+      status: "warn",
+      detail: `could not resolve the Python interpreter: ${String(e)}`
+    });
+  }
+  try {
     const dep = checkDependencies();
     checks.push({
       name: "numbers_parser",
       status: dep.ok ? "ok" : "fail",
-      detail: dep.ok ? dep.message : `${dep.message} Run: npm run setup`
+      detail: dep.message
     });
   } catch (e) {
     checks.push({
       name: "numbers_parser",
       status: "fail",
-      detail: `could not verify numbers-parser: ${String(e)}. Run: npm run setup`
+      detail: `could not verify numbers-parser: ${String(e)}. ${setupHint()}`
     });
   }
   try {
@@ -22279,7 +22315,7 @@ server.registerTool(
 server.registerTool(
   "doctor",
   {
-    description: "Use when: a tool returns a permission or setup error, or you want the full setup diagnostic before writing/formatting.\nReturns: three checks \u2014 numbers-parser (read sidecar), Numbers.app (needed for writes), and Automation permission \u2014 each as ok/warn/fail with actionable advice.\nDo not use when: you only need the lightweight read-sidecar version check \u2014 use health-check instead.",
+    description: "Use when: a tool returns a permission or setup error, or you want the full setup diagnostic before writing/formatting.\nReturns: four checks \u2014 the resolved Python interpreter (path + version), numbers-parser (read sidecar), Numbers.app (needed for writes), and Automation permission \u2014 each as ok/warn/fail with actionable advice.\nDo not use when: you only need the lightweight read-sidecar version check \u2014 use health-check instead.",
     inputSchema: {},
     outputSchema: {
       healthy: external_exports.boolean().optional(),

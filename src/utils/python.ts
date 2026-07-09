@@ -120,14 +120,16 @@ function findSystemPython(): string {
     }
   }
   throw new Error(
-    'Python 3 not found. Run "npm run setup" to create a venv, or ensure python3 is on PATH.'
+    "Python 3 not found on PATH. Install Python >= 3.11 (stock macOS ships 3.9 - brew install python@3.12), " +
+      "or run scripts/setup.sh from a repo checkout. " +
+      "See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
   );
 }
 
 /**
  * Resolve a Python interpreter. The project venv is cached once present (it's
  * stable); a system-Python fallback is deliberately NOT cached, so a venv
- * created later (e.g. by auto-bootstrap, or a manual `npm run setup`) is picked
+ * created later (e.g. by auto-bootstrap, or a manual `scripts/setup.sh` run) is picked
  * up on the very next call WITHOUT requiring a server restart.
  */
 function resolvePython(): string {
@@ -221,8 +223,14 @@ function looksLikeMissingDep(message: string): boolean {
   return /not installed|No module named|ModuleNotFoundError/i.test(message);
 }
 
-function setupHint(): string {
-  return `Run: npm run setup (or set ${ENV_PREFIX}_NO_AUTO_SETUP=0 to allow automatic setup).`;
+export function setupHint(): string {
+  return (
+    `Install it with: pip3 install numbers-parser (requires Python >= 3.11; stock macOS ships 3.9 - ` +
+    `brew install python@3.12), or run scripts/setup.sh from a repo checkout. ` +
+    `Run the doctor tool to diagnose, and see ` +
+    `https://github.com/sweetrb/apple-numbers-mcp#troubleshooting ` +
+    `(set ${ENV_PREFIX}_NO_AUTO_SETUP=0 to allow automatic setup).`
+  );
 }
 
 const DEFAULT_MAX_BUFFER_BYTES = 50 * 1024 * 1024; // 50MB for large spreadsheets
@@ -300,6 +308,30 @@ export function runNumbersReader<T = unknown>(
     }
   }
   return result;
+}
+
+export interface PythonInterpreterInfo {
+  path: string;
+  version: string; // e.g. "Python 3.9.6"
+}
+
+/**
+ * Resolve the Python interpreter the sidecar will use and report its path +
+ * version, so diagnostics (the doctor tool) can surface an old stock Python
+ * (macOS ships 3.9; numbers-parser needs >= 3.11) at a glance. Returns null
+ * when no interpreter can be resolved.
+ */
+export function getPythonInfo(): PythonInterpreterInfo | null {
+  try {
+    const python = resolvePython();
+    const version = execFileSync(python, ["--version"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    return { path: python, version };
+  } catch {
+    return null;
+  }
 }
 
 export function checkDependencies(): { ok: boolean; message: string } {

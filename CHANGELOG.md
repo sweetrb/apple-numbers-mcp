@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-07-09
+### Changed
+- **Actionable no-clone error messages.** Every "Run: npm run setup" hint (the sidecar's `numbers-parser not installed` error, the TS wrapper's setup hint, the Python-not-found error, and the `doctor` detail strings) now gives guidance that works *without* a repo checkout: `pip3 install numbers-parser` (noting it requires Python >= 3.11 while stock macOS ships 3.9 — `brew install python@3.12`), `scripts/setup.sh` from a checkout, a pointer to the `doctor` tool, and an absolute link to https://github.com/sweetrb/apple-numbers-mcp#troubleshooting. `npm run setup` was a dead end for npx/global-install users, who have no repo to run it in.
+- **`doctor` now reports the resolved Python interpreter** as a new `python_interpreter` check — path + version, warning when it's older than 3.11 — so the most common failure (stock macOS Python 3.9) is visible at a glance instead of hiding behind a generic "numbers-parser not installed".
+
+### Docs
+- **README install commands now install from the npm registry** (`npm install -g apple-numbers-mcp`) instead of `github:sweetrb/apple-numbers-mcp` — the GitHub form builds on the user's machine and requires pnpm, so it's now documented only under **From Source**, labeled accordingly.
+- **Deterministic Claude Code one-liner** added to Quick Start: `claude mcp add apple-numbers -s user -- npx -y apple-numbers-mcp`.
+- **Plugin-marketplace Quick Start explains the first-call venv bootstrap** — the plugin runs from its clone under `~/.claude/plugins/marketplaces/apple-numbers-mcp/`, and the first tool call auto-builds a Python venv there (~1 min; requires Python >= 3.11 on PATH), with the install directory named so "run `scripts/setup.sh` in the install directory" is followable.
+- **Troubleshooting for "numbers-parser not installed" now leads with the real cause** — `python3` older than 3.11 (stock macOS = 3.9); install a newer Python and retry, the venv rebuilds automatically.
+- **`docs/` now ships in the npm tarball** (added to package.json `files`), and all README cross-file links were converted from relative paths to absolute GitHub URLs so they resolve on npmjs.com and in the installed package, not just on GitHub.
+- **README no longer claims Linux support** — the npm package declares `os: ["darwin"]`; Requirements now says macOS-only.
+- **The Claude Code plugin now really ships a skill.** The README claimed the plugin installs a skill, but the plugin-root `skills/` directory didn't exist (only the Codex copy did). Added `skills/apple-numbers/SKILL.md` (mirroring the Codex skill, kept identical, matching apple-photos-mcp's layout), with its stale "npm run setup" / "macOS or Linux" wording fixed in both copies.
+
 ## [1.1.5] - 2026-07-06
 ### Fixed
 - **A bare `git clone` / marketplace install now runs the server with only Node present.** Tracking `build/` (a previous release) put the compiled entrypoint in git, but `build/index.js` still `import`ed its dependencies (`@modelcontextprotocol/sdk`, `zod`) from `node_modules/`, which a plain clone / marketplace install lacks — so the server died on `ERR_MODULE_NOT_FOUND` before it could complete the MCP handshake. The build now **esbuild-bundles `src/index.ts` into a single self-contained `build/index.js`** (`tsc --noEmit` still type-checks; esbuild does the bundling), so the marketplace/git clone starts on Node alone with no install step. This mirrors the fix @oliverames landed for apple-notes-mcp (#69) and apple-mail-mcp (#79), and the matching change in apple-photos-mcp. The Python sidecar path logic was made **bundle-safe** alongside: `getProjectRoot()` now walks up to the directory that owns `package.json` + `src/utils/numbers_reader.py` instead of assuming a fixed `build/utils/ → ../..` depth, so the collapsed single-file bundle (where `index.js` sits at `build/index.js`, one level shallower) still resolves `numbers_reader.py`, the venv, `requirements.txt`, and `scripts/setup.sh` correctly.
