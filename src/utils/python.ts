@@ -268,14 +268,52 @@ function execReader<T>(command: string, args: string[], timeoutMs: number): Pyth
     }
     return { data: result as T };
   } catch (err: unknown) {
-    const error = err as Error & { stderr?: string | Buffer; status?: number };
+    const error = err as Error & {
+      stderr?: string | Buffer;
+      stdout?: string | Buffer;
+      status?: number;
+    };
     const stderr = error.stderr?.toString().trim() ?? "";
 
-    if (stderr.includes(`${PACKAGE} not installed`) || looksLikeMissingDep(stderr)) {
+    // The sidecar reports failures as structured JSON on STDOUT ({"error": ...})
+    // before exiting 1 (numbers_reader.py: the numbers-parser import guard and the
+    // top-level exception handler), with nothing on stderr. execFileSync throws on
+    // the non-zero exit, so that JSON must be recovered from err.stdout — otherwise
+    // every sidecar failure degrades to a generic "Command failed: <python> <args>".
+    const stdout = error.stdout?.toString().trim() ?? "";
+    let sidecarError: string | null = null;
+    if (stdout) {
+      try {
+        const parsed: unknown = JSON.parse(stdout);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          typeof (parsed as { error?: unknown }).error === "string"
+        ) {
+          sidecarError = (parsed as { error: string }).error;
+        }
+      } catch {
+        // stdout wasn't valid JSON (partial write, stray output) — fall back to
+        // the stderr/message handling below.
+      }
+    }
+
+    // Missing-dep reports can arrive on either channel: the import guard's JSON on
+    // stdout, or a raw ModuleNotFoundError traceback on stderr. Normalize both
+    // through the same setup hint so callers (and the bootstrap retry in
+    // runNumbersReader) always see one consistent message.
+    const missingDep = (s: string): boolean =>
+      s.includes(`${PACKAGE} not installed`) || looksLikeMissingDep(s);
+    if ((sidecarError !== null && missingDep(sidecarError)) || missingDep(stderr)) {
       return { error: `${PACKAGE} not installed. ${setupHint()}` };
     }
     if (error.message?.includes("ETIMEDOUT") || error.message?.includes("timed out")) {
       return { error: `Operation timed out after ${timeoutMs}ms. File may be very large.` };
+    }
+    // Prefer the sidecar's structured error over stderr — stderr may hold only
+    // incidental noise (Python warnings) while the JSON carries the real cause.
+    if (sidecarError !== null) {
+      return { error: sidecarError };
     }
     // Surface the Python traceback when there is one — without it the user just
     // sees "Command failed: <python> <args>" with no clue what actually broke.

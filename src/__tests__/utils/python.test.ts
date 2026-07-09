@@ -115,6 +115,110 @@ describe("python.ts", () => {
       expect(result.error).toContain("APPLE_NUMBERS_MCP_NO_AUTO_SETUP");
     });
 
+    it("should surface the sidecar's JSON error from stdout on a non-zero exit", () => {
+      // The sidecar prints {"error": ...} to STDOUT then exits 1 (top-level
+      // exception handler in numbers_reader.py); execFileSync throws with the
+      // captured output attached. The structured error must win over both the
+      // generic "Command failed" message and incidental stderr noise.
+      const error = new Error("Command failed: python3 numbers_reader.py info") as Error & {
+        stdout: string;
+        stderr: string;
+        status: number;
+      };
+      error.stdout = JSON.stringify({
+        error: "File not found: /bad.numbers",
+      });
+      error.stderr = "UserWarning: some incidental python warning";
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/bad.numbers"]);
+
+      expect(result.error).toBe("File not found: /bad.numbers");
+      expect(result.data).toBeUndefined();
+    });
+
+    it("should normalize the import guard's stdout JSON missing-dep error to the setup hint", () => {
+      // numbers_reader.py's import guard reports "numbers-parser not installed"
+      // as JSON on STDOUT (stderr stays empty) before exit(1) — it must hit the
+      // same normalized setup-hint path as a stderr ModuleNotFoundError.
+      const error = new Error("Command failed: python3 numbers_reader.py info") as Error & {
+        stdout: string;
+        status: number;
+      };
+      error.stdout = JSON.stringify({
+        error: "numbers-parser not installed. Install it with: pip3 install numbers-parser",
+      });
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/test.numbers"]);
+
+      expect(result.error).toContain("numbers-parser not installed");
+      expect(result.error).toContain("pip3 install numbers-parser");
+      expect(result.error).toContain("APPLE_NUMBERS_MCP_NO_AUTO_SETUP");
+    });
+
+    it("should fall back to stderr when stdout on a non-zero exit is not JSON", () => {
+      const error = new Error("Command failed: python3 numbers_reader.py info") as Error & {
+        stdout: string;
+        stderr: string;
+        status: number;
+      };
+      error.stdout = "partial garbage that is not JSON {";
+      error.stderr = "Traceback (most recent call last):\n  something broke";
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/test.numbers"]);
+
+      expect(result.error).toContain("Traceback");
+    });
+
+    it("should fall back to the error message when stdout is not JSON and stderr is empty", () => {
+      const error = new Error("Command failed: python3 numbers_reader.py info") as Error & {
+        stdout: string;
+        stderr: string;
+        status: number;
+      };
+      error.stdout = "not json";
+      error.stderr = "";
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/test.numbers"]);
+
+      expect(result.error).toBe("Command failed: python3 numbers_reader.py info");
+    });
+
+    it("should ignore stdout JSON on a non-zero exit when it has no string error field", () => {
+      // Valid JSON but not the sidecar's error shape (e.g. truncated-but-parseable
+      // data) — must not be surfaced as the error; fall through to stderr.
+      const error = new Error("Command failed: python3 numbers_reader.py info") as Error & {
+        stdout: string;
+        stderr: string;
+        status: number;
+      };
+      error.stdout = JSON.stringify({ rows: [] });
+      error.stderr = "killed";
+      error.status = 1;
+      mockedExecFileSync.mockImplementation(() => {
+        throw error;
+      });
+
+      const result = runNumbersReader("info", ["/test.numbers"]);
+
+      expect(result.error).toBe("killed");
+    });
+
     it("should handle timeout errors", () => {
       const error = new Error("Command timed out");
       error.message = "ETIMEDOUT: operation timed out";
