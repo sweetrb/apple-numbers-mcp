@@ -21529,11 +21529,26 @@ function execReader(command, args, timeoutMs) {
   } catch (err) {
     const error2 = err;
     const stderr = error2.stderr?.toString().trim() ?? "";
-    if (stderr.includes(`${PACKAGE} not installed`) || looksLikeMissingDep(stderr)) {
+    const stdout = error2.stdout?.toString().trim() ?? "";
+    let sidecarError = null;
+    if (stdout) {
+      try {
+        const parsed = JSON.parse(stdout);
+        if (typeof parsed === "object" && parsed !== null && typeof parsed.error === "string") {
+          sidecarError = parsed.error;
+        }
+      } catch {
+      }
+    }
+    const missingDep = (s) => s.includes(`${PACKAGE} not installed`) || looksLikeMissingDep(s);
+    if (sidecarError !== null && missingDep(sidecarError) || missingDep(stderr)) {
       return { error: `${PACKAGE} not installed. ${setupHint()}` };
     }
     if (error2.message?.includes("ETIMEDOUT") || error2.message?.includes("timed out")) {
       return { error: `Operation timed out after ${timeoutMs}ms. File may be very large.` };
+    }
+    if (sidecarError !== null) {
+      return { error: sidecarError };
     }
     if (stderr) {
       return { error: stderr };
