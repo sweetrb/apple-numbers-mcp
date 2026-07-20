@@ -72,7 +72,7 @@ When adding a new MCP tool:
 2. **Implement the method** in `src/services/numbersManager.ts`.
 3. **Add the command** to the Python sidecar `src/utils/numbers_reader.py` (or the AppleScript path in `src/utils/applescript.ts` for formatting/formula tools).
 4. **Add type definitions** in `src/types.ts`.
-5. **Write tests** and **update** `README.md` + `CHANGELOG.md`. If the skill guidance changed, update every SKILL.md copy (`skills/`, `codex/skills/`, `.antigravity-plugin/skills/`) — they must stay in sync.
+5. **Write tests** and **update** `README.md` + `CHANGELOG.md`. If the skill guidance changed, edit `skills/apple-numbers/SKILL.md` (the canonical copy) and run `pnpm run sync:skills` — the `codex/` and `.antigravity-plugin/` copies are generated from it and CI fails if they drift.
 
 ## Sidecar & AppleScript Guidelines
 
