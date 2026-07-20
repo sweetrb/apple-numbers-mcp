@@ -12,8 +12,10 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 2. **Install dependencies**
    ```bash
-   npm install
+   pnpm install
    ```
+
+   This repo pins pnpm via `packageManager` in `package.json` — `corepack enable` provides it. Development needs Node >= 22.13 (CI tests on Node 22 and 24); the published server itself runs on Node >= 20.
 
 3. **Set up the Python sidecar** (creates a project-local venv with `numbers-parser`)
    ```bash
@@ -22,13 +24,13 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 4. **Build the project**
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 5. **Run tests**
    ```bash
-   npm test                 # unit tests (fast, no Numbers.app / venv needed)
-   npm run test:integration # round-trips real .numbers files through the Python sidecar
+   pnpm test                 # unit tests (fast, no Numbers.app / venv needed)
+   pnpm run test:integration # round-trips real .numbers files through the Python sidecar
    ```
 
 ## Code Style
@@ -36,10 +38,10 @@ Thank you for your interest in contributing! This document provides guidelines f
 This project uses ESLint and Prettier for code quality and formatting.
 
 ```bash
-npm run lint        # check
-npm run lint:fix    # auto-fix
-npm run format      # format
-npm run format:check
+pnpm run lint        # check
+pnpm run lint:fix    # auto-fix
+pnpm run format      # format
+pnpm run format:check
 ```
 
 ## Testing
@@ -49,17 +51,18 @@ All new features should include tests. We use Vitest.
 ### Testing Guidelines
 
 - Unit tests mock the Python bridge (`execFileSync`) and the AppleScript runner, since both require macOS.
-- The integration suite (`npm run test:integration`) generates `.numbers` fixtures and exercises the real `numbers-parser` sidecar.
+- The integration suite (`pnpm run test:integration`) generates `.numbers` fixtures and exercises the real `numbers-parser` sidecar.
 - Test both success and failure paths, and edge cases (empty values, special characters, missing sheets/tables).
-- Enforced coverage thresholds run in CI (`npm run test:coverage`); keep new code above the floor.
+- Enforced coverage thresholds run in CI (`pnpm run test:coverage`); keep new code above the floor.
 
 ## Pull Request Process
 
 1. Create a feature branch (`git checkout -b feature/your-feature-name`).
 2. Make your changes — follow the existing style, add JSDoc, add tests.
-3. Run all checks: `npm run lint && npm run typecheck && npm test && npm run build`.
-4. Commit with clear messages referencing any related issues.
-5. Push and open a PR describing what it does and linking related issues.
+3. Run all checks: `pnpm run lint && pnpm run typecheck && pnpm run format:check && pnpm test && pnpm run build`.
+4. If you changed shipped code (`src/**` excluding tests, the runtime `dependencies` in `package.json`, or `requirements.txt`), bump the version at least a patch (`pnpm version patch --no-git-tag-version`) and add a CHANGELOG.md entry in the same PR — the `require-version-bump` CI check fails the PR otherwise (docs-only and test-only PRs are exempt). Rebuild and commit the bundled `build/index.js` (`pnpm run build`); CI verifies it matches the source.
+5. Commit with clear messages referencing any related issues.
+6. Push and open a PR describing what it does and linking related issues.
 
 ## Adding New Tools
 
@@ -69,7 +72,7 @@ When adding a new MCP tool:
 2. **Implement the method** in `src/services/numbersManager.ts`.
 3. **Add the command** to the Python sidecar `src/utils/numbers_reader.py` (or the AppleScript path in `src/utils/applescript.ts` for formatting/formula tools).
 4. **Add type definitions** in `src/types.ts`.
-5. **Write tests** and **update** `README.md` + `CHANGELOG.md`.
+5. **Write tests** and **update** `README.md` + `CHANGELOG.md`. If the skill guidance changed, update every SKILL.md copy (`skills/`, `codex/skills/`, `.antigravity-plugin/skills/`) — they must stay in sync.
 
 ## Sidecar & AppleScript Guidelines
 
