@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Read and write Apple Numbers spreadsheets - read tables, create files, update cells, manage sheets/tables, search, import CSV/TSV/JSON, and export data (macOS only).",
   "author": {
     "name": "Rob Sweet",
@@ -9,7 +9,15 @@
   "homepage": "https://github.com/sweetrb/apple-numbers-mcp#readme",
   "repository": "https://github.com/sweetrb/apple-numbers-mcp",
   "license": "MIT",
-  "keywords": ["mcp", "apple-numbers", "numbers", "spreadsheets", "claude", "codex", "macos"],
+  "keywords": [
+    "mcp",
+    "apple-numbers",
+    "numbers",
+    "spreadsheets",
+    "claude",
+    "codex",
+    "macos"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -18,7 +26,11 @@
     "longDescription": "A macOS Apple Numbers connector for Codex that uses the apple-numbers-mcp server to read tables, cells, and file structure (via numbers-parser, offline, cross-platform), and to create files, update cells, manage sheets and tables, write formulas and styles, merge cells, search, import CSV/TSV/JSON, and export data (writes drive Numbers.app via AppleScript and need macOS plus the Automation permission).",
     "developerName": "Rob Sweet",
     "category": "Productivity",
-    "capabilities": ["MCP Servers", "Read", "Write"],
+    "capabilities": [
+      "MCP Servers",
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/sweetrb/apple-numbers-mcp#readme",
     "defaultPrompt": [
       "Read the first table in my budget spreadsheet and total column B.",
@@ -28,6 +40,8 @@
     "brandColor": "#4cb579",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png",
-    "screenshots": ["./assets/screenshot.png"]
+    "screenshots": [
+      "./assets/screenshot.png"
+    ]
   }
 }

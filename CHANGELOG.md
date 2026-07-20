@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-07-20
+
+### Changed
+
+- CI/release hardening: `version-guard` now treats the committed `build/` bundle as shipped bytes (closing the lockfile-only and devDep silent-never-publish vectors) with an npm version-collision check; `publish.yml` gained a daily self-healing watchdog, manual dispatch, exact-version skip, CI-validated-commit checkout, and GitHub-Release self-heal; Dependabot bundle rebuilds now auto-bump a patch version; CI boots the committed bundle standalone on Node 20 every run; the bundle is now built with `--target=node20`, making the `engines.node >= 20` claim enforced at build time.
+- `requirements.txt` is now exact-pinned and under Dependabot pip management; CodeQL scans the Python sidecar.
+
 ## [1.1.7] - 2026-07-09
 
 ### Fixed
