@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-07-20
+
+### Changed
+
+- Bump the Python sidecar's `numbers-parser` pin from 4.18.2 to 4.18.5. This is a runtime dependency — the sidecar is what reads `.numbers` files — so the pin ships. Verified before release against a real 3-sheet workbook (226-row, 61-row and 1949-row tables): `info` returns the correct sheet/table structure, `read` parses all 225 data rows with correct cell values, and stdout stays clean JSON. numbers-parser's `unsupported version` RuntimeWarning for newer `.numbers` file formats is emitted on stderr only, so it cannot corrupt the sidecar's JSON channel.
+
 ## [1.1.8] - 2026-07-20
 
 ### Changed
