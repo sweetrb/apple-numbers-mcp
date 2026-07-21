@@ -40,7 +40,7 @@ Numbers.app and the Automation permission.
 | Tool | Purpose |
 |------|---------|
 | `health-check` | Verify Python 3 + numbers-parser are installed; report version |
-| `doctor` | Full setup diagnostic - read sidecar, Numbers.app, Automation permission |
+| `doctor` | Full setup diagnostic - Python interpreter (path+version), read sidecar, Numbers.app, Automation permission |
 | `get-file-info` | List sheets, tables, dimensions, header rows |
 | `read-table` | Read rows (optional row range + column filter); defaults to first sheet/table |
 | `get-cell` | One cell by 0-based row/col; `verbose: true` adds formula/format/merge |
@@ -98,17 +98,21 @@ errors. Call `get-file-info` first when unsure of names.
 
 ## Important Guidelines
 
-1. **macOS Only for writes.** Reads work on macOS or Linux; writes/formatting
-   require macOS with Numbers.app and the Automation permission.
-2. **Run `doctor` when something fails.** It reports the read sidecar,
-   Numbers.app presence, and Automation permission as ok/warn/fail.
+1. **macOS only.** The package is macOS-only. Reads need just the Python read
+   sidecar; writes/formatting also require Numbers.app and the Automation permission.
+2. **Run `doctor` when something fails.** It reports the resolved Python
+   interpreter (path + version), the read sidecar, Numbers.app presence, and
+   Automation permission as ok/warn/fail.
 3. **`.numbers` extension required.** Every path must end in `.numbers`.
 
 ## Error Handling
 
-- **"numbers-parser not installed. Run: npm run setup"**: the Python read
-  sidecar/venv is missing - run `npm run setup` (source clone) or
-  `pip3 install numbers-parser` (global install).
+- **"numbers-parser not installed"**: the Python read sidecar/venv is missing.
+  Most often `python3` is older than 3.11 (stock macOS ships 3.9): install a
+  newer Python (`brew install python@3.12`) and retry - the venv rebuilds
+  automatically. Otherwise `pip3 install numbers-parser` (global install) or
+  run `scripts/setup.sh` from a repo checkout. The `doctor` tool reports the
+  resolved interpreter path + version.
 - **"Not authorized to send Apple events to Numbers."**: the host app lacks the
   Automation permission for Numbers - grant it in System Settings -> Privacy &
   Security -> Automation, or reset with `tccutil reset AppleEvents`.
