@@ -8,6 +8,9 @@
 ### Fixed
 - **`pnpm version` no longer breaks with the `.hermes-plugin/` removal.** The `version` lifecycle script listed `.hermes-plugin` in its `git add`; `git add` exits 128 on a pathspec that matches nothing, which would have broken the documented release step (`pnpm version <patch|minor|major> --no-git-tag-version`) for every subsequent release. The stale path is dropped from the `git add` list.
 
+### Security
+- **postcss 8.5.16 → 8.5.24** (dev-only transitive, via vite/vitest). Clears Dependabot alert #6 (GHSA high): "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure", whose vulnerable range is `<= 8.5.17`. postcss is not a runtime dependency and is not inlined into the committed bundle (verified byte-identical after a rebuild), so nothing that ships to npm changes — this was a stale lockfile resolution, not a code defect. The sibling repos were already above the range (mail 8.5.23 behind an explicit `^8.5.15` override floor, notes and photos 8.5.19), which is why the alert fired only here.
+
 ## [1.1.10] - 2026-07-22
 
 ### Security
