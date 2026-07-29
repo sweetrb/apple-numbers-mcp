@@ -34,7 +34,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "version": "node scripts/sync-plugin-version.mjs && git add .claude-plugin .agents/plugins codex .hermes-plugin .antigravity-plugin",
+    "version": "node scripts/sync-plugin-version.mjs && git add .claude-plugin .agents/plugins codex .antigravity-plugin",
     "prepublishOnly": "pnpm run lint && pnpm test && pnpm run build",
     "prepare": "husky; pnpm run build"
   },
