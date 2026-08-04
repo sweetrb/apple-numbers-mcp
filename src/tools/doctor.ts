@@ -2,9 +2,10 @@
  * Setup "doctor": one diagnostic covering the things that actually break an
  * apple-numbers-mcp setup — the resolved Python interpreter (path + version, so
  * an old stock Python is visible), the numbers-parser Python sidecar (used for
- * reads), the presence of Numbers.app (required for AppleScript write/format
- * tools), and the Automation permission those write tools need — each reported
- * as ok / warn / fail with an actionable message.
+ * reads *and* value/structure writes), the presence of Numbers.app (required
+ * only for the AppleScript formula/formatting tools), and the Automation
+ * permission those same tools need — each reported as ok / warn / fail with an
+ * actionable message.
  *
  * @module tools/doctor
  */
@@ -88,23 +89,26 @@ export function runDoctor(_manager: NumbersManager): DoctorReport {
     });
   }
 
-  // 3. Numbers.app — required for AppleScript write/format tools. Reads via
-  //    numbers-parser still work without it, so its absence is a warn, not a fail.
+  // 3. Numbers.app — required only for the AppleScript formula/formatting tools.
+  //    Reads and value/structure writes via numbers-parser still work without it,
+  //    so its absence is a warn, not a fail.
   try {
     const found = NUMBERS_APP_PATHS.find((p) => existsSync(p));
     if (found) {
       checks.push({
         name: "numbers_app",
         status: "ok",
-        detail: `Numbers.app present — write operations available (${found})`,
+        detail: `Numbers.app present — formula and formatting tools available (${found})`,
       });
     } else {
       checks.push({
         name: "numbers_app",
         status: "warn",
         detail:
-          "Numbers.app not found. Reads/exports via numbers-parser still work, but " +
-          "write, formatting, and other AppleScript tools need Numbers.app installed.",
+          "Numbers.app not found. Reads, exports and value/structure writes via " +
+          "numbers-parser still work; only the formula and formatting tools " +
+          "(set-formula(s), set-cell(s)-style, set-column-width/set-row-height, " +
+          "merge-cells/unmerge-cells) need Numbers.app installed.",
       });
     }
   } catch (e) {
@@ -112,21 +116,23 @@ export function runDoctor(_manager: NumbersManager): DoctorReport {
       name: "numbers_app",
       status: "warn",
       detail:
-        `could not verify Numbers.app: ${String(e)}. Reads/exports still work; ` +
-        "write/formatting tools need Numbers.app.",
+        `could not verify Numbers.app: ${String(e)}. Reads, exports and ` +
+        "value/structure writes still work; only the formula/formatting tools " +
+        "need Numbers.app.",
     });
   }
 
   // 4. Automation permission — can't be probed without side effects, so this is
-  //    informational. AppleScript write tools require Automation permission for
-  //    Numbers.app, granted on first use.
+  //    informational. Only the AppleScript formula/formatting tools require
+  //    Automation permission for Numbers.app, granted on first use.
   try {
     checks.push({
       name: "automation_permission",
       status: "ok",
       detail:
-        "AppleScript write tools require Automation permission for Numbers.app, " +
-        "granted on first use (System Settings > Privacy & Security > Automation).",
+        "The AppleScript formula/formatting tools require Automation permission " +
+        "for Numbers.app, granted on first use (System Settings > Privacy & " +
+        "Security > Automation). Reads and value/structure writes do not.",
     });
   } catch (e) {
     checks.push({

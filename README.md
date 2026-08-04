@@ -153,10 +153,10 @@ The entrypoint is written as:
 
 ## Requirements
 
-- **macOS** — the npm package is macOS-only (it declares `os: ["darwin"]`). Reads go through `numbers-parser` directly (no Numbers.app needed); **formatting and formula tools additionally require Numbers.app.**
+- **macOS** — the npm package is macOS-only (it declares `os: ["darwin"]`). Reads **and value/structure writes** go through `numbers-parser` directly (no Numbers.app needed); **formatting and formula tools additionally require Numbers.app.**
 - **Node.js 20+** — Required for the MCP server
 - **Python 3.11+** — the `numbers-parser` library installs automatically into a project-local venv on first use (or pre-warm with `pnpm run setup`). numbers-parser requires Python ≥ 3.10; macOS ships 3.9, so install a newer Python first (e.g. `brew install python@3.12`).
-- **Automation permission (writes only)** — Reads and exports need no special permission, but write/format tools drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
+- **Automation permission (formulas & formatting only)** — Reads, exports and ordinary value/structure writes (`set-cell(s)`, `add`/`update`/`delete-rows`, `add-sheet`/`add-table`, `rename-*`, `create-spreadsheet`, `import-csv`) need no special permission and no Numbers.app. Only the eight formula/format tools — `set-formula(s)`, `set-cell(s)-style`, `set-column-width`/`set-row-height`, `merge-cells`/`unmerge-cells` — drive Numbers.app via AppleScript and require the host app to have Automation permission for Numbers, granted on first use. See the [Automation Permission guide](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md). Run the **`doctor`** tool to verify your setup.
 
 ## Features
 
@@ -233,11 +233,11 @@ Verify Python 3 and `numbers-parser` are installed and reachable from the server
 
 #### `doctor`
 
-Run a full setup diagnostic with four separate checks: `python_interpreter` (the resolved Python's path and version — warns when it's older than 3.11, the most common setup failure since stock macOS ships 3.9), `numbers_parser` (the read sidecar — required for all reads/exports), `numbers_app` (Numbers.app present — required for write/format tools), and `automation_permission` (an informational reminder that write tools need Automation permission for Numbers.app). Each is reported as ok / warn / fail with actionable advice. This is the richer counterpart to `health-check`; reach for it first when a tool returns a permission or setup error.
+Run a full setup diagnostic with four separate checks: `python_interpreter` (the resolved Python's path and version — warns when it's older than 3.11, the most common setup failure since stock macOS ships 3.9), `numbers_parser` (the read sidecar — required for all reads/exports), `numbers_app` (Numbers.app present — required for the formula/format tools only), and `automation_permission` (an informational reminder that those tools need Automation permission for Numbers.app). Each is reported as ok / warn / fail with actionable advice. This is the richer counterpart to `health-check`; reach for it first when a tool returns a permission or setup error.
 
 **Parameters:** None
 
-**Returns:** A per-check report. The `structuredContent` carries the raw `{ healthy, checks[] }`, where each check has `name`, `status` (`ok`/`warn`/`fail`), and `detail`. Reads don't need Automation permission, but writes do — see [docs/AUTOMATION-PERMISSION.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md).
+**Returns:** A per-check report. The `structuredContent` carries the raw `{ healthy, checks[] }`, where each check has `name`, `status` (`ok`/`warn`/`fail`), and `detail`. Only the formula/format tools need Automation permission — see [docs/AUTOMATION-PERMISSION.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/AUTOMATION-PERMISSION.md).
 
 ---
 
@@ -265,6 +265,8 @@ Read data from a table. Returns headers and rows. Defaults to the first sheet an
 | `startRow` | number | No | 0-based start row, inclusive (default: 1, after header) |
 | `endRow` | number | No | 0-based end row, inclusive (default: last row) |
 | `columns` | (string \| number)[] | No | Column filter: header names or 0-based indices |
+
+**Returns:** Sheet name, table name, the headers and rows selected, and `numRows` / `numCols` describing **the selection** — not the table. When you pass `startRow`/`endRow`/`columns`, those counts describe what came back; use [`get-file-info`](#get-file-info) for the table's real dimensions.
 
 ---
 
@@ -300,6 +302,8 @@ Case-insensitive partial match across every cell in a `.numbers` file.
 #### `export-table`
 
 Export a table to CSV, TSV, or JSON.
+
+**⚠️ Safety:** Writes a file to disk at `outputPath`. The path is written unconditionally — any existing file there is **overwritten** — so confirm the destination before calling.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -419,6 +423,8 @@ Add a new sheet, optionally with headers for the default table.
 | `tableName` | string | No | Name for the default table |
 | `headers` | string[] | No | Headers for the default table |
 
+**Table geometry:** pass `headers` and the new table is created **1 row × `headers.length` columns**; omit them and you get a **12 × 8** grid of empty cells. There is no way to override the size through MCP — delete the extra rows with `delete-rows` if you don't want them. The response reports the dimensions that were created.
+
 ---
 
 #### `add-table`
@@ -431,6 +437,8 @@ Add a new table to an existing sheet.
 | `sheet` | string | No | Sheet name (default: first sheet) |
 | `tableName` | string | No | Name for the new table |
 | `headers` | string[] | No | Column headers |
+
+**Table geometry:** same rule as [`add-sheet`](#add-sheet) — with `headers` the table is **1 × `headers.length`**, without them **12 × 8**.
 
 ---
 
@@ -483,7 +491,7 @@ Write multiple formulas in a single operation.
 | `path` | string | Yes | Path to the `.numbers` file |
 | `sheet` | string | Yes | Sheet name |
 | `table` | string | Yes | Table name |
-| `entries` | array | Yes | Array of `{row, col, formula}` objects |
+| `formulas` | array | Yes | Array of `{row, col, formula}` objects |
 
 ---
 
@@ -575,6 +583,12 @@ Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet. Auto-detects 
 | `sheetName` | string | No | Default: `"Sheet 1"` |
 | `tableName` | string | No | Default: `"Table 1"` |
 
+**CSV/TSV fields are auto-typed.** Every field from a `csv`/`tsv` source is converted before it is written: `""` → empty cell, `true`/`false` → boolean, and anything Python's `int()`/`float()` parses → number. So a zip code `01234` becomes the number `1234`, `007` becomes `7`, and `1e5` becomes `100000.0`. This is deliberately less conservative than `set-cell`/`add-rows`, which keep leading-zero strings intact, and there is no per-column type control on import. For zero-padded identifiers, import from JSON instead (JSON values are passed through untouched) or repair the column afterwards with `set-cells-batch` using `type: "string"`.
+
+**JSON column sets come from the first object.** For an array of objects, the columns are the keys of `data[0]`; a key that appears only in a later object is dropped and objects missing an early key get blank cells — normalize the keys first. For an array of arrays, columns are named `Column_0`, `Column_1`, … and the first row is kept as data.
+
+**`format: "auto"` falls back to CSV.** Any extension that isn't `.csv`, `.tsv` or `.json` is parsed as comma-separated rather than erroring, so pass `format` explicitly for unusual extensions. The format actually used is echoed back in the result.
+
 ---
 
 ## Usage Patterns
@@ -599,7 +613,7 @@ AI: [calls search with query='Acme Corp']
 
 ```
 User: "Set B5 to =SUM(B2:B4) and bold the header row"
-AI: [calls set-formula] [calls set-cells-style-batch with bold:true on row 0]
+AI: [calls set-formula] [calls set-cells-style-batch with style {fontName: "Helvetica-Bold"} on row 0]
     "Done — B5 is =SUM(B2:B4) and the header row is bold."
 ```
 
@@ -663,6 +677,15 @@ All configuration is optional — the server works out of the box.
 | `APPLE_NUMBERS_MCP_NO_AUTO_SETUP` | unset (auto-setup on) | Set to a truthy value (`1`, `true`) to disable the one-time automatic creation of the Python venv. When set, the server will not run `setup.sh` on its own — you must provide `numbers-parser` yourself (`pip3 install numbers-parser` or `pnpm run setup`). |
 | `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` | `300000` (5 minutes) | Timeout in milliseconds for the automatic venv bootstrap (`setup.sh`). Raise it on a slow network where the `numbers-parser` pip install would otherwise time out. |
 
+> **Per-call timeouts are not configurable.** Every `numbers-parser` sidecar call
+> runs under a fixed **30-second** timeout and every AppleScript call under a fixed
+> **60-second** one; there is no environment variable for either.
+> `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` above governs only the one-time venv bootstrap,
+> and `APPLE_NUMBERS_MCP_MAX_BUFFER` caps stdout size, not wall-clock time. If you
+> hit `Operation timed out after 30000ms`, narrow the request — use `read-table`'s
+> `startRow`/`endRow` and `columns`, split large batches — rather than looking for
+> a knob.
+
 ### Configuration file (when the host strips `env`)
 
 Some host apps (e.g. Claude Desktop) launch the MCP server with a scrubbed
@@ -701,19 +724,22 @@ This is the same Python-sidecar pattern used by [apple-photos-mcp](https://githu
 - **Local only** — All operations happen on the local machine. No data is sent to external servers.
 - **No credential storage** — The server doesn't store any passwords or authentication tokens.
 - **File-system access** — Tools take explicit paths; the server only reads or writes files you name.
-- **Numbers.app automation** — Formatting and formula tools drive Numbers.app via AppleScript. macOS will prompt for automation permission on first use.
+- **Numbers.app automation** — Formatting and formula tools drive Numbers.app via AppleScript. macOS will prompt for automation permission on first use. These tools **open the file in Numbers.app** (launching it if it isn't running), **save the whole document** — including any unsaved edits you have open in it — and **leave it open** afterwards. Everything else, including all value and structure writes, runs entirely in the Python sidecar and never touches the app.
 
 ---
 
 ## Known Limitations
 
-For the full rundown — the read-vs-write split, AppleScript-only formulas/styles,
-indexing, dates, format lag, and concurrent edits — see **[docs/LIMITATIONS.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/LIMITATIONS.md)**.
+For the full rundown — the values-vs-formatting backend split, AppleScript-only
+formulas/styles, `import-csv` auto-typing, fixed per-call timeouts, indexing,
+dates, format lag, and concurrent edits — see **[docs/LIMITATIONS.md](https://github.com/sweetrb/apple-numbers-mcp/blob/main/docs/LIMITATIONS.md)**.
 The summary below is the quick version.
 
 | Limitation | Reason |
 |------------|--------|
-| Formatting / formulas / dimensions need Numbers.app | `numbers-parser` doesn't write styles or formulas; the AppleScript layer fills that gap (macOS only) |
+| Formatting / formulas / dimensions need Numbers.app | `numbers-parser` doesn't write styles or formulas; the AppleScript layer fills that gap (macOS only). Value and structure writes do **not** need it |
+| `import-csv` auto-types CSV/TSV fields | Leading zeros are lost (`01234` → `1234`); JSON input is passed through untouched |
+| Per-call timeouts are fixed | 30 s for sidecar calls, 60 s for AppleScript; neither is configurable — narrow the request instead |
 | No conditional formatting | Not exposed by `numbers-parser` |
 | No charts or images | Not exposed by `numbers-parser` |
 | Sheet deletion not supported | Not exposed by `numbers-parser` |

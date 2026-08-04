@@ -45,9 +45,10 @@ const server = new McpServer({
   version,
   description:
     "MCP server for reading and writing Apple Numbers (.numbers) spreadsheet files. " +
-    "Provides tools to inspect file structure, read table data, search cells, " +
-    "export to CSV/JSON/TSV, read individual cell values, create new spreadsheets, " +
-    "update cells, and append rows.",
+    "Inspect file structure, read/search/export table data and individual cells, " +
+    "create spreadsheets, write cells and add/update/delete rows, manage sheets and " +
+    "tables, import CSV/TSV/JSON — all offline via the numbers-parser sidecar — and, " +
+    "via Numbers.app, write live formulas, cell styling, column/row dimensions, and merges.",
 });
 
 // health-check
@@ -78,7 +79,7 @@ server.registerTool(
   {
     description:
       "Use when: a tool returns a permission or setup error, or you want the full setup diagnostic before writing/formatting.\n" +
-      "Returns: four checks — the resolved Python interpreter (path + version), numbers-parser (read sidecar), Numbers.app (needed for writes), and Automation permission — each as ok/warn/fail with actionable advice.\n" +
+      "Returns: four checks — the resolved Python interpreter (path + version), numbers-parser (the read/write sidecar), Numbers.app (needed only for the formula/formatting tools), and Automation permission — each as ok/warn/fail with actionable advice.\n" +
       "Do not use when: you only need the lightweight read-sidecar version check — use health-check instead.",
     inputSchema: {},
     outputSchema: {
@@ -165,7 +166,7 @@ server.registerTool(
   {
     description:
       "Use when: you want the data from a table — headers plus rows, optionally limited to a row range (0-based inclusive indices; header is row 0, so data starts at row 1) and/or a subset of columns. Defaults to the first sheet and first table if sheet/table are omitted.\n" +
-      "Returns: sheet name, table name, dimensions, headers, and the selected rows.\n" +
+      "Returns: sheet name, table name, the headers and rows selected, and numRows/numCols describing the SELECTION — not the table. Use get-file-info for the table's full dimensions.\n" +
       "Do not use when: you only need one cell — use get-cell; you need the file's structure/names — use get-file-info; or you want to find a value's location — use search.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
@@ -268,7 +269,8 @@ server.registerTool(
     description:
       "Use when: you want to write a table's data out to a CSV, TSV, or JSON file on disk. Defaults to the first sheet and first table if sheet/table are omitted.\n" +
       "Returns: the exported row count, format, and output path.\n" +
-      "Do not use when: you want the data inline in the response rather than a file — use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source — use import-csv.",
+      "Do not use when: you want the data inline in the response rather than a file — use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source — use import-csv.\n" +
+      "Safety: writes a file to disk at outputPath. The path is written unconditionally — any existing file there is OVERWRITTEN — so confirm the destination before calling.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       format: z.enum(["csv", "tsv", "json"]).describe("Output format"),
@@ -388,7 +390,7 @@ server.registerTool(
       "Use when: you need to write a computed value to one cell in an existing .numbers file, addressed by 0-based row and column (header is row 0). Defaults to the first sheet/table if omitted.\n" +
       "Returns: the written coordinates, value, and the sheet/table affected.\n" +
       'Do not use when: you\'re writing many cells — use set-cells-batch; replacing whole rows — use update-rows; or writing a live formula — use set-formula (passing "=SUM(...)" here writes literal text, not a formula).\n' +
-      "Safety: modifies the .numbers file in place and OVERWRITES any existing data in the target cell.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app) and OVERWRITES any existing data in the target cell.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
@@ -432,7 +434,7 @@ server.registerTool(
       "Use when: you need to write computed values to multiple cells at once (each with 0-based row/col); more efficient than many set-cell calls. Defaults to the first sheet/table if omitted.\n" +
       "Returns: the number of cells written and the sheet/table affected.\n" +
       "Do not use when: replacing whole rows by index — use update-rows; appending new rows — use add-rows; or writing live formulas — use set-formulas-batch.\n" +
-      "Safety: modifies the .numbers file in place and OVERWRITES any existing data in the targeted cells.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app) and OVERWRITES any existing data in the targeted cells.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       updates: z
@@ -481,7 +483,7 @@ server.registerTool(
       "Use when: you want to append new rows of data to the end of an existing table; rows are added after the last existing row. Defaults to the first sheet/table if omitted.\n" +
       "Returns: the number of rows added, the starting row index, and the new total row count.\n" +
       "Do not use when: overwriting existing rows by index — use update-rows; setting individual cells — use set-cell / set-cells-batch.\n" +
-      "Safety: modifies the .numbers file in place. Additive (appends rows) and does not overwrite existing data, but still mutates the file.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app). Additive (appends rows) and does not overwrite existing data, but still mutates the file.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       rows: z
@@ -521,7 +523,7 @@ server.registerTool(
       "Use when: you need to permanently remove a contiguous range of rows from a table; both startRow and endRow are 0-based inclusive indices (header is row 0). Defaults to the first sheet/table if omitted.\n" +
       "Returns: the number of rows deleted and the new total row count.\n" +
       "Do not use when: you only want to clear values while keeping the rows — use set-cells-batch with empty values; or overwrite rows in place — use update-rows.\n" +
-      "Safety: DESTRUCTIVE — requires explicit user confirmation; not undoable; the .numbers file is modified in place and the deleted rows cannot be recovered. Double-check the 0-based inclusive range before calling.",
+      "Safety: DESTRUCTIVE — requires explicit user confirmation; not undoable; the .numbers file is modified in place via the numbers-parser sidecar (does not require Numbers.app) and the deleted rows cannot be recovered. Double-check the 0-based inclusive range before calling.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       startRow: z
@@ -562,10 +564,10 @@ server.registerTool(
   "add-sheet",
   {
     description:
-      "Use when: you want to add a new sheet to an existing .numbers file, optionally naming its default table and providing its headers.\n" +
+      "Use when: you want to add a new sheet to an existing .numbers file, optionally naming its default table and providing its headers. Geometry depends on headers: with headers the table is created 1 row x headers.length columns; without them it is a 12 x 8 grid of empty cells (not overridable through MCP).\n" +
       "Returns: the new sheet name, its default table name, and the table's dimensions.\n" +
       "Do not use when: adding a table to an existing sheet — use add-table; or creating a whole new file — use create-spreadsheet.\n" +
-      "Safety: modifies the .numbers file in place. Additive (adds a new sheet) and does not overwrite existing data, but still mutates the file.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app). Additive (adds a new sheet) and does not overwrite existing data, but still mutates the file.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheetName: z.string().max(MAX_NAME_LEN).describe("Name for the new sheet"),
@@ -599,10 +601,10 @@ server.registerTool(
   "add-table",
   {
     description:
-      "Use when: you want to add a new table to an existing sheet, optionally naming it and providing its headers. Defaults to the first sheet if omitted.\n" +
+      "Use when: you want to add a new table to an existing sheet, optionally naming it and providing its headers. Defaults to the first sheet if omitted. Geometry depends on headers: with headers the table is created 1 row x headers.length columns; without them it is a 12 x 8 grid of empty cells (not overridable through MCP).\n" +
       "Returns: the new table name, the sheet it was added to, and the table's dimensions.\n" +
       "Do not use when: adding a whole new sheet — use add-sheet; or creating a new file — use create-spreadsheet.\n" +
-      "Safety: modifies the .numbers file in place. Additive (adds a new table) and does not overwrite existing data, but still mutates the file.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app). Additive (adds a new table) and does not overwrite existing data, but still mutates the file.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
@@ -636,7 +638,7 @@ server.registerTool(
   "import-csv",
   {
     description:
-      "Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly.\n" +
+      'Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly; any unrecognized extension falls back to CSV. CSV/TSV fields are auto-typed (numbers, booleans, empty cells), so zero-padded identifiers LOSE their leading zeros — "01234" becomes 1234. JSON values are passed through untouched, but an array of objects takes its column set from the FIRST object only, silently dropping keys that appear later.\n' +
       "Returns: the imported row and column counts, detected format, and the input/output paths plus sheet/table names.\n" +
       "Do not use when: building a file from headers/rows you already have in hand — use create-spreadsheet; or exporting a .numbers table out to CSV/TSV/JSON — use export-table.\n" +
       "Safety: writes the output .numbers file via the numbers-parser sidecar (does not require Numbers.app). The output path is written unconditionally — if a file already exists there it is OVERWRITTEN in place; choose a fresh output path or confirm overwrite first.",
@@ -687,7 +689,7 @@ server.registerTool(
       "Use when: you need to replace whole rows by 0-based index in an existing file; each update carries a row index and a complete array of column values. Carrying multiple {row, values} entries is more efficient than per-row writes. Defaults to the first sheet/table if omitted.\n" +
       "Returns: the number of rows updated and the sheet/table affected.\n" +
       "Do not use when: appending new rows — use add-rows; writing individual cells — use set-cell / set-cells-batch; or writing live formulas — use set-formulas-batch.\n" +
-      "Safety: modifies the .numbers file in place and OVERWRITES the entire contents of each targeted row.",
+      "Safety: modifies the .numbers file in place via the numbers-parser sidecar (does not require Numbers.app) and OVERWRITES the entire contents of each targeted row.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       updates: z
@@ -791,7 +793,7 @@ server.registerTool(
       'Use when: you need to write a live formula (e.g. "=SUM(A2:A10)") into a cell so it computes in Numbers, addressed by 0-based row/col. Requires explicit sheet and table.\n' +
       "Returns: the cell, the formula set, and its computed value.\n" +
       "Do not use when: writing a plain computed value — use set-cell (this tool is for live formulas); or setting many formulas — use set-formulas-batch.\n" +
-      "Safety: drives Numbers.app via AppleScript and requires Numbers.app to be running plus Automation permission. The file is opened if not already open, the formula OVERWRITES any existing content in the target cell, and the file is saved in place.",
+      "Safety: drives Numbers.app via AppleScript and requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. The file is opened in Numbers.app if not already open, launching the app; the formula OVERWRITES any existing content in the target cell; the WHOLE document is saved, which commits any unsaved edits the user has open in it; and the document is left open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -827,7 +829,7 @@ server.registerTool(
       "Use when: you need to write live formulas to multiple cells at once (each with 0-based row/col); more efficient than many set-formula calls. Requires explicit sheet and table.\n" +
       "Returns: the number of formulas set and the sheet/table affected.\n" +
       "Do not use when: writing plain computed values — use set-cells-batch; or setting a single formula — use set-formula.\n" +
-      "Safety: drives Numbers.app via AppleScript and requires Numbers.app to be running plus Automation permission. Modifies the file in place and OVERWRITES any existing content in the targeted cells.",
+      "Safety: drives Numbers.app via AppleScript and requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; OVERWRITES any existing content in the targeted cells; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -909,7 +911,7 @@ server.registerTool(
       "Use when: you need to format one cell — font, text/background color, number format, alignment, text wrap — addressed by 0-based row/col. Requires explicit sheet and table.\n" +
       "Returns: the styled cell and the sheet/table affected.\n" +
       "Do not use when: styling many cells — use set-cells-style-batch; or writing a value/formula rather than formatting — use set-cell / set-formula.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission.",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -942,7 +944,7 @@ server.registerTool(
       "Use when: you need to format multiple cells at once (each with 0-based row/col); more efficient than many set-cell-style calls. Requires explicit sheet and table.\n" +
       "Returns: the number of cells styled and the sheet/table affected.\n" +
       "Do not use when: styling a single cell — use set-cell-style; or writing values/formulas rather than formatting — use set-cells-batch / set-formulas-batch.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission.",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -983,7 +985,7 @@ server.registerTool(
       "Use when: you need to set a column's width in pixels, addressed by 0-based column index. Requires explicit sheet and table.\n" +
       "Returns: the column index and the width applied.\n" +
       "Do not use when: setting a row's height — use set-row-height.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission.",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -1019,7 +1021,7 @@ server.registerTool(
       "Use when: you need to set a row's height in pixels, addressed by 0-based row index. Requires explicit sheet and table.\n" +
       "Returns: the row index and the height applied.\n" +
       "Do not use when: setting a column's width — use set-column-width.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission.",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -1055,7 +1057,7 @@ server.registerTool(
       "Use when: you need to merge a rectangular range of cells into one, given 0-based inclusive top-left and bottom-right coordinates. Requires explicit sheet and table.\n" +
       "Returns: the merged range and the sheet/table affected.\n" +
       "Do not use when: undoing a merge — use unmerge-cells.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission. Merging keeps only the top-left cell's content and can DROP the values in the other cells of the range.",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards. Merging keeps only the top-left cell's content and can DROP the values in the other cells of the range.",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
@@ -1088,7 +1090,7 @@ server.registerTool(
       "Use when: you need to split a previously merged range back into individual cells, given 0-based inclusive top-left and bottom-right coordinates. Requires explicit sheet and table.\n" +
       "Returns: the unmerged range and the sheet/table affected.\n" +
       "Do not use when: creating a merge — use merge-cells.\n" +
-      "Safety: drives Numbers.app via AppleScript — modifies the file in place and requires Numbers.app to be running plus Automation permission. Previously merged cells stay empty (the original non-top-left values are not restored).",
+      "Safety: drives Numbers.app via AppleScript — requires Numbers.app INSTALLED (it need not already be running) plus Automation permission. Opens the file in Numbers.app if it isn't open already, launching the app; modifies it in place; saves the WHOLE document, which commits any unsaved edits the user has open in it; and leaves the document open afterwards. Previously merged cells stay empty (the original non-top-left values are not restored).",
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
