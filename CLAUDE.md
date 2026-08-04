@@ -8,26 +8,34 @@ This MCP server lets AI assistants **read, write, search, format, and import**
 Apple Numbers (`.numbers`) spreadsheets. All operations are **local** — nothing
 leaves the user's machine. It has two backends, and the split matters:
 
-- **Reads** use [numbers-parser](https://pypi.org/project/numbers-parser/) (Python).
-  They open the `.numbers` file **directly off disk**, **offline**, with **no app
-  and no special permission** — and work on macOS *or* Linux.
-- **Writes & formatting** drive **Numbers.app via AppleScript** (numbers-parser
-  can't write styles/formulas reliably). These require **macOS + Numbers.app
-  installed + the Automation permission**.
+- **Reads *and* value/structure writes** use
+  [numbers-parser](https://pypi.org/project/numbers-parser/) (Python). They open
+  the `.numbers` file **directly off disk**, **offline**, with **no app and no
+  special permission**. This covers `set-cell`, `add-rows`, `create-spreadsheet`,
+  `import-csv` and friends — not just reads.
+- **Formulas & formatting** drive **Numbers.app via AppleScript** (numbers-parser
+  can't write styles/formulas reliably). Only these require **Numbers.app
+  installed + the Automation permission**: `set-formula`, `set-formulas-batch`,
+  `set-cell-style`, `set-cells-style-batch`, `set-column-width`, `set-row-height`,
+  `merge-cells`, `unmerge-cells`.
 
-Internalize that read-vs-write split: you can fully inspect, search, and export a
-file with zero setup beyond the Python sidecar, but the moment you **change or
-format** a file you need Numbers.app and Automation permission.
+Internalize that the split is **values vs. formatting**, not read vs. write: you
+can inspect, search, export **and edit** a file with zero setup beyond the Python
+sidecar. Never gate or refuse a `set-cell`, `add-rows` or `import-csv` on a missing
+Numbers.app or Automation grant — those calls never send an Apple event, so a
+failure there is something else. (The npm package is still macOS-only: it declares
+`os: ["darwin"]`.)
 
 ## Related Documentation
 
 - **[docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md)** — which tools
   need Automation permission, how the prompt appears, how to grant/reset it
   (`tccutil reset AppleEvents`), what failure looks like, and how to verify.
-  Required reading when a write tool fails with *"Not authorized to send Apple
-  events to Numbers."*
+  Required reading when a formula/format tool fails with *"Not authorized to send
+  Apple events to Numbers."*
 - **[docs/LIMITATIONS.md](./docs/LIMITATIONS.md)** — what the server can and can't
-  do (read-vs-write split, formulas/styles are AppleScript-only, no
+  do (the values-vs-formatting backend split, formulas/styles are
+  AppleScript-only, `import-csv` auto-typing, fixed per-call timeouts, no
   charts/conditional-formatting, indexing, dates, format lag, concurrent edits).
 
 ## First-run requirements
@@ -36,18 +44,21 @@ format** a file you need Numbers.app and Automation permission.
    (Python). On a source clone, run `pnpm run setup` to create the project-local
    venv at `./venv` with numbers-parser. On a global install,
    `pip3 install numbers-parser`. Without it, **every read** fails.
-2. **For writes only: Numbers.app + Automation permission.** Write/format tools
-   script Numbers.app, so the app must be installed and the **host app** (Claude,
-   Terminal, iTerm, VS Code) must have Automation permission to control Numbers —
-   granted via a one-time prompt on the first write, or manually in **System
-   Settings → Privacy & Security → Automation**. See
-   [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md).
+2. **For formulas & formatting only: Numbers.app + Automation permission.** Those
+   eight tools script Numbers.app, so the app must be installed and the **host
+   app** (Claude, Terminal, iTerm, VS Code) must have Automation permission to
+   control Numbers — granted via a one-time prompt on the first such call, or
+   manually in **System Settings → Privacy & Security → Automation**. See
+   [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md). Value and
+   structure writes need neither.
 
-When in doubt, run **`doctor`** — it's the richest diagnostic, reporting three
-checks as ok/warn/fail: `numbers_parser` (read sidecar present), `numbers_app`
-(Numbers.app present, needed for writes), and `automation_permission`
-(informational reminder that write tools need it). `health-check` is the lighter
-check (numbers-parser version only).
+When in doubt, run **`doctor`** — it's the richest diagnostic, reporting four
+checks as ok/warn/fail: `python_interpreter` (the resolved Python's path and
+version; warns below 3.11, since stock macOS ships 3.9 — the most common setup
+failure), `numbers_parser` (read/write sidecar present), `numbers_app`
+(Numbers.app present, needed for the formula/format tools), and
+`automation_permission` (informational reminder that those tools need it).
+`health-check` is the lighter check (numbers-parser version only).
 
 ## Conventions and behaviors to know
 
@@ -69,27 +80,34 @@ check (numbers-parser version only).
 - **Values vs. formulas.** `set-cell`/`set-cells-batch`/`add-rows`/`update-rows`
   write **computed values** — passing `"=SUM(...)"` writes the literal text. Use
   `set-formula` / `set-formulas-batch` for live formulas (these need Numbers.app).
-- **Prefer batch tools.** Each AppleScript write spins up Numbers.app scripting, so
-  batching is much faster. Use `set-cells-batch` over many `set-cell` calls,
-  `set-formulas-batch` over many `set-formula`, `set-cells-style-batch` over many
-  `set-cell-style`, and `update-rows` (which can carry multiple `{row, values}`
-  entries) over per-row writes.
+- **`add-sheet`/`add-table` geometry depends on `headers`.** Pass `headers` and the
+  new table is created 1 row × `headers.length` columns; omit them and you get a
+  **12 × 8** grid of empty cells. The response reports the dimensions either way.
+- **Prefer batch tools.** Each formula/format call spins up Numbers.app scripting
+  and each sidecar call is its own Python process plus a full document load and
+  save, so batching is much faster either way. Use `set-cells-batch` over many
+  `set-cell` calls, `set-formulas-batch` over many `set-formula`,
+  `set-cells-style-batch` over many `set-cell-style`, and `update-rows` (which can
+  carry multiple `{row, values}` entries) over per-row writes.
+- **Per-call timeouts are fixed.** Sidecar calls time out at **30 s**, AppleScript
+  calls at **60 s**, and neither is configurable. On a timeout, narrow the request
+  (row ranges, `columns`, smaller batches) — don't go looking for an env var.
 
 ## Tools at a glance
 
-**Read (numbers-parser — no Numbers.app, no Automation permission, cross-platform):**
+**Read (numbers-parser — no Numbers.app, no Automation permission):**
 
 | Tool | Purpose |
 |------|---------|
 | `health-check` | Verify Python 3 + numbers-parser are installed; report version |
-| `doctor` | Full setup diagnostic — read sidecar, Numbers.app, Automation permission, each ok/warn/fail (richer than `health-check`) |
+| `doctor` | Full setup diagnostic — Python interpreter (path + version), read sidecar, Numbers.app, Automation permission, each ok/warn/fail (richer than `health-check`) |
 | `get-file-info` | List sheets, tables, dimensions, header rows |
 | `read-table` | Read rows (optional row range + column filter), defaults to first sheet/table |
 | `get-cell` | One cell by 0-based row/col; `verbose: true` adds formula/format/merge |
 | `search` | Case-insensitive substring search across every cell, optionally one sheet |
 | `export-table` | Export a table to CSV / TSV / JSON |
 
-**Write & format (AppleScript → Numbers.app — needs macOS + Automation permission):**
+**Write values & structure (numbers-parser — no Numbers.app, no Automation permission):**
 
 | Tool | Purpose |
 |------|---------|
@@ -100,11 +118,20 @@ check (numbers-parser version only).
 | `delete-rows` | Delete a 0-based inclusive row range |
 | `add-sheet` / `add-table` | Add a sheet, or a table to a sheet |
 | `rename-sheet` / `rename-table` | Rename a sheet or table |
+| `import-csv` | Convert a CSV/TSV/JSON file into a **new** `.numbers` spreadsheet |
+
+**Formulas & formatting (AppleScript → Numbers.app — needs Numbers.app installed + Automation permission):**
+
+| Tool | Purpose |
+|------|---------|
 | `set-formula` / `set-formulas-batch` | Write live formula(s) (leading `=`) |
 | `set-cell-style` / `set-cells-style-batch` | Font, color, number format, alignment |
 | `set-column-width` / `set-row-height` | Dimensions in pixels (0-based index) |
 | `merge-cells` / `unmerge-cells` | Merge/undo-merge a 0-based inclusive range |
-| `import-csv` | Convert a CSV/TSV/JSON file into a new `.numbers` spreadsheet |
+
+These eight open the file in Numbers.app (launching it if needed), **save the whole
+document** — including any unsaved hand edits the user has open — and leave it
+open afterwards.
 
 ## Core workflow: inspect, then act
 
@@ -116,7 +143,8 @@ errors.
 ```
 1. get-file-info path="~/x.numbers"   → sheet & table names, sizes
 2. read-table / search / get-cell     → see the data (header is row 0)
-3. set-cells-batch / set-formula / …   → write or format (needs Numbers.app)
+3. set-cells-batch / update-rows / …   → write values (no Numbers.app needed)
+4. set-formula / set-cell-style / …    → formulas & formatting (needs Numbers.app)
 ```
 
 ## Error Handling
@@ -124,8 +152,8 @@ errors.
 | Error | Likely cause | What to do |
 |-------|--------------|------------|
 | "numbers-parser not installed. Install it with: pip3 install numbers-parser ..." | Python read sidecar/venv missing (most common: `python3` < 3.11 - stock macOS ships 3.9) | Run `pnpm run setup` (source clone) or `pip3 install numbers-parser` (global); if Python is too old, `brew install python@3.12` first |
-| "Not authorized to send Apple events to Numbers." | Host app lacks Automation permission for Numbers | Grant it (System Settings → Privacy & Security → Automation) or reset with `tccutil reset AppleEvents`; see [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md) |
-| "Numbers.app not running" / Numbers.app not found | Numbers.app not installed/openable (writes only) | Install/open Numbers.app once, then retry; reads still work without it |
+| "Not authorized to send Apple events to Numbers." | Host app lacks Automation permission for Numbers — only reachable from the 8 formula/format tools | Grant it (System Settings → Privacy & Security → Automation) or reset with `tccutil reset AppleEvents`; see [docs/AUTOMATION-PERMISSION.md](./docs/AUTOMATION-PERMISSION.md) |
+| Numbers can't be found / isn't running | Numbers.app not installed (formula/format tools only — they launch it themselves, so it needn't already be running) | Install Numbers.app, then retry; reads and value/structure writes work without it |
 | "File not found" | Wrong path, or `~` not expanded by the caller | Check the path; ensure it ends in `.numbers` |
 | "Sheet not found" / "Table not found" | Sheet/table name doesn't match | Call `get-file-info` first to get exact names; omit `sheet`/`table` to use the first |
 
@@ -134,10 +162,12 @@ errors.
 - "What's in this file?" → `get-file-info`, then `read-table`
 - "Find X" → `search`
 - "What's in cell B5?" → `get-cell` (remember: 0-based, header is row 0)
-- "Set / append / format cells" → batch tools (`set-cells-batch`,
-  `set-formulas-batch`, `set-cells-style-batch`, `update-rows`) — needs Numbers.app
+- "Set or append cells" → `set-cells-batch` / `update-rows` (no Numbers.app needed)
+- "Format cells / add a formula" → `set-cells-style-batch`, `set-formulas-batch`
+  — these need Numbers.app + Automation permission
 - "Export that table" → `export-table` (CSV/TSV/JSON)
-- "Import this CSV" → `import-csv`
+- "Import this CSV" → `import-csv` (`inputPath` + `outputPath`; CSV/TSV fields are
+  auto-typed, so zero-padded IDs like `01234` become numbers)
 - "Is my setup OK?" → `doctor`
 
 ## Recurring macOS permission prompts → offer the official-Node fix

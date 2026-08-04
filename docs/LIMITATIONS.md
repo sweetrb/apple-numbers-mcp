@@ -1,32 +1,38 @@
 # Limitations
 
 Apple Numbers MCP is a **hybrid** bridge to `.numbers` spreadsheets: it **reads**
-them offline with [numbers-parser](https://pypi.org/project/numbers-parser/)
-(Python, no app required), and **writes/formats** them by scripting **Numbers.app**
-via AppleScript (because numbers-parser can't write styles or formulas). That split
-is the source of most of the limitations below.
+them *and writes their values and structure* offline with
+[numbers-parser](https://pypi.org/project/numbers-parser/) (Python, no app
+required), and **formats** them — styles, live formulas, column/row dimensions,
+merges — by scripting **Numbers.app** via AppleScript (because numbers-parser
+can't write those). That split is the source of most of the limitations below.
+Note it is a **values-vs-formatting** split, not a read-vs-write one.
 
 This page documents the real limitations — what the server can't do and why — so
 they aren't re-investigated every release. These agree with the README's
 [Known Limitations](../README.md#known-limitations); this page adds the *why* and
 *what to do* for each.
 
-## Writes & formatting require Numbers.app + Automation permission (reads don't)
+## Formulas & formatting require Numbers.app + Automation permission (nothing else does)
 
-**Why:** numbers-parser can read a `.numbers` file directly off disk, but it does
-**not** write styles, formulas, or cell-dimension changes reliably. To do those,
-the server scripts **Numbers.app** through AppleScript. That means every
-write/format tool needs (a) **Numbers.app installed** and (b) the host app to have
-**Automation** permission to control Numbers. Read tools (`get-file-info`,
-`read-table`, `get-cell`, `search`, `export-table`) use only numbers-parser and
-need **neither** — they work on macOS or Linux with no Automation grant.
+**Why:** numbers-parser can read a `.numbers` file directly off disk *and* write
+values, rows, sheets and tables into it — but it does **not** write styles,
+formulas, or cell-dimension changes reliably. To do those, the server scripts
+**Numbers.app** through AppleScript. That means the eight formula/format tools
+need (a) **Numbers.app installed** and (b) the host app to have **Automation**
+permission to control Numbers. Every other tool — the reads (`get-file-info`,
+`read-table`, `get-cell`, `search`, `export-table`) *and* the value/structure
+writes (`set-cell(s)`, `add/update/delete-rows`, `add-sheet`/`add-table`,
+`rename-*`, `create-spreadsheet`, `import-csv`) — uses only numbers-parser and
+needs **neither**: no Numbers.app, no Automation grant, no Apple event.
 
-**What to do:** For inspection/search/export, nothing special is needed. For any
-write — `set-cell(s)`, `add/update/delete-rows`, `add-sheet`/`add-table`,
-`rename-*`, `set-formula(s)`, `set-*-style`, `set-column-width`/`set-row-height`,
-`merge`/`unmerge`, `create-spreadsheet`, `import-csv` — install Numbers.app and
-grant Automation permission. Full steps in
-[AUTOMATION-PERMISSION.md](./AUTOMATION-PERMISSION.md). Verify with `doctor`.
+**What to do:** For inspection/search/export, and for ordinary value and structure
+edits, nothing special is needed. Only for `set-formula(s)`, `set-*-style`,
+`set-column-width`/`set-row-height` and `merge`/`unmerge` do you have to install
+Numbers.app and grant Automation permission. Full steps in
+[AUTOMATION-PERMISSION.md](./AUTOMATION-PERMISSION.md). Verify with `doctor` — and
+test the grant with a *formula/format* tool, since a `set-cell` succeeds without
+it and so proves nothing.
 
 ## Formulas and styling are AppleScript-only
 
@@ -37,9 +43,11 @@ numbers-parser doesn't expose reliable writes for these. They go exclusively
 through Numbers.app via AppleScript, so they inherit the macOS-only + Automation
 requirements above and can't run on Linux.
 
-**What to do:** Run formula/format tools on macOS with Numbers.app. If you only
-have the Python path available (e.g. Linux), you can still read formulas and
-formatted values (via `get-cell verbose: true`) — you just can't set them.
+**What to do:** Run formula/format tools on macOS with Numbers.app installed.
+Where only the Python path is available, you can still *read* formulas and
+formatted values (via `get-cell verbose: true`) — you just can't set them. Note
+the npm package declares `os: ["darwin"]`, so Linux isn't a supported install
+target even for that read-only subset (see "macOS only" below).
 
 ## Values vs. formulas
 
@@ -49,6 +57,40 @@ value writes the literal string, not a live formula.
 
 **What to do:** Use `set-formula` / `set-formulas-batch` to write actual formulas
 (these require Numbers.app). Use the value tools for plain data.
+
+## `import-csv` auto-types CSV/TSV fields, so leading zeros are lost
+
+**Why:** For a `csv` or `tsv` source, every field is passed through the sidecar's
+`_auto_convert()` before it is written: `""` becomes an empty cell, `true`/`false`
+become booleans, and anything Python's `int()` or `float()` accepts becomes a
+number. That is deliberately *less* conservative than the value-write tools
+(`set-cell`, `set-cells-batch`, `add-rows`, `update-rows`), which reject
+leading-zero integers so identifier-like strings keep their exact text. So a zip
+code `01234` imports as the number `1234`, `007` imports as `7`, and a part number
+`1e5` imports as the number `100000`. There is no per-column type control on import, and the
+conversion isn't reversible once the `.numbers` file is written.
+
+A `json` source does **not** do this — those values go straight through, so a JSON
+string `"01234"` survives intact.
+
+**What to do:** For CSV/TSV columns holding zero-padded identifiers, import from
+JSON instead, or repair the affected cells after import with `set-cells-batch`
+using `type: "string"`. Spot-check with `get-cell` after importing anything
+identifier-like.
+
+## `import-csv` takes its JSON columns from the first object only
+
+**Why:** For an array-of-objects JSON source the column set is the keys of the
+**first** object. A key that appears only in a later object is dropped silently,
+and objects missing an early key get blank cells. An array-of-arrays source has no
+header names at all: columns are named `Column_0`, `Column_1`, … and the first row
+is kept as data. Separately, when `format` is `auto`, any extension that isn't
+`.csv`, `.tsv` or `.json` falls back to **CSV** rather than erroring.
+
+**What to do:** Normalize a heterogeneous JSON export to a common key set before
+importing, and pass `format` explicitly for inputs whose extension isn't one of the
+three recognized ones. The tool's response reports the format it actually used and
+the column count it produced — check both when the input is unusual.
 
 ## No charts, images, or conditional formatting
 
@@ -105,24 +147,41 @@ upgrade numbers-parser first. Check the installed version with `health-check` /
 
 ## Concurrent edits while Numbers.app has the file open
 
-**Why:** Two backends can touch the same file. The read path (numbers-parser) reads
-whatever is on disk, and the write path drives Numbers.app. If Numbers.app has the
-file **open with unsaved changes**, what numbers-parser reads off disk can be
-stale, and a write through AppleScript targets the app's in-memory copy — the two
-can disagree, and saves can race.
+**Why:** Two backends can touch the same file. The numbers-parser path (reads and
+value/structure writes) sees whatever is on disk; the formula/format path drives
+Numbers.app. If Numbers.app has the file **open with unsaved changes**, what
+numbers-parser reads off disk can be stale, and an AppleScript call targets the
+app's in-memory copy — the two can disagree, and saves can race.
+
+Three side effects of the AppleScript path matter here, because they apply to
+**every** formula/format tool:
+
+1. **It opens the file itself**, launching Numbers.app if it isn't running. These
+   tools don't require Numbers.app to already be running — only *installed* — so a
+   single `set-column-width` on an idle Mac can pop a window and, the first time,
+   the Automation prompt.
+2. **It saves the whole document, not just the change.** If you have the workbook
+   open in Numbers with unsaved hand edits, one formula/format call commits *all*
+   of them to disk.
+3. **It leaves the document open** afterwards — nothing ever closes it — so every
+   later numbers-parser read or write on that file races the app's in-memory copy,
+   which is exactly the hazard this section describes.
 
 **What to do:** Prefer to **close the file in Numbers.app** before reading or doing
-bulk writes through the server, so disk and app agree. If you must keep it open,
+bulk writes through the server, so disk and app agree — and close it again after a
+run of formula/format calls, which will have reopened it. If you must keep it open,
 read back with `read-table` / `get-cell` after writes to confirm the result landed,
 and avoid editing the same cells by hand in Numbers.app at the same time.
 
 ## Concurrent writes to the same file are last-writer-wins
 
 **Why:** Each write tool opens the `.numbers` file, applies its change to an
-in-memory document, and saves the **whole document** back. The save itself is
-**atomic** — every mutating command writes to a sibling temp file and `os.replace()`s
-it onto the target — so an interrupted or crashed write can never leave a torn or
-half-written file. But atomicity protects against *corruption*, **not** against
+in-memory document, and saves the **whole document** back. On the numbers-parser
+path the save is **atomic** — every mutating sidecar command writes to a sibling
+temp file and `os.replace()`s it onto the target — so an interrupted or crashed
+write can never leave a torn or half-written file. (The formula/format tools save
+through Numbers.app instead, so that guarantee is the app's, not this server's.)
+But atomicity protects against *corruption*, **not** against
 *lost updates*: if two writes to the same file overlap (two agents, two server
 instances, or a server write racing a hand edit in Numbers.app), each loaded the
 document independently, and whichever saves **last** overwrites the other's change
@@ -135,11 +194,33 @@ related edits into a single call (`set-cells-batch`, `update-rows`,
 starting the next on the same file, and after a burst of writes read back with
 `read-table` / `get-cell` to confirm the final state is what you intended.
 
-## macOS-only for writes; reads are cross-platform
+## Per-call timeouts are fixed (30 s sidecar, 60 s AppleScript)
 
-**Why:** Reads run anywhere numbers-parser runs (macOS or Linux). Writes/formatting
-script Numbers.app, which only exists on macOS.
+**Why:** Every numbers-parser sidecar call runs under a **30-second** process
+timeout, and every AppleScript call under **60 seconds** (the generated script also
+carries an in-app `with timeout` block set 5 s lower, so Numbers.app aborts cleanly
+before the process is killed). Neither is configurable — there is no
+`APPLE_NUMBERS_MCP_*` variable for either one.
+`APPLE_NUMBERS_MCP_SETUP_TIMEOUT` governs only the one-time venv bootstrap, and
+`APPLE_NUMBERS_MCP_MAX_BUFFER` caps stdout size, not wall-clock time. A very large
+workbook, or a wedged Numbers.app, surfaces as `Operation timed out after
+30000ms. File may be very large.`
 
-**What to do:** Run write/format workloads on a Mac with Numbers.app installed and
-Automation permission granted. See
+**What to do:** Narrow the request rather than hunting for a knob: read in slices
+with `read-table`'s `startRow`/`endRow` and `columns`, split large
+`set-cells-batch` / `update-rows` calls into smaller batches, and close the file in
+Numbers.app so the AppleScript layer isn't waiting on the app.
+
+## macOS only (the package declares `os: ["darwin"]`)
+
+**Why:** The published npm package declares `"os": ["darwin"]`, so `npm`/`pnpm`
+refuse to install it on any other platform (`EBADPLATFORM`). The numbers-parser
+path — reads plus value/structure writes — is platform-independent in principle
+(nothing in the sidecar branches on the platform), but the formula/format tools
+script Numbers.app, which exists only on macOS, so the package as a whole is
+pinned to darwin deliberately.
+
+**What to do:** Run this server on a Mac. Add Numbers.app plus Automation
+permission only if you need formulas or formatting; reads and value/structure
+writes need neither. See
 [AUTOMATION-PERMISSION.md](./AUTOMATION-PERMISSION.md).

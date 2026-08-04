@@ -122,7 +122,8 @@ function findSystemPython(): string {
   throw new Error(
     "Python 3 not found on PATH. Install Python >= 3.11 (stock macOS ships 3.9 - brew install python@3.12), " +
       "or run scripts/setup.sh from a repo checkout. " +
-      "See https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
+      "Run the doctor tool to diagnose, and see " +
+      "https://github.com/sweetrb/apple-numbers-mcp#troubleshooting"
   );
 }
 

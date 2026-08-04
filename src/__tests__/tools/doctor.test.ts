@@ -52,7 +52,7 @@ describe("runDoctor", () => {
 
     const app = report.checks.find((c) => c.name === "numbers_app");
     expect(app?.status).toBe("ok");
-    expect(app?.detail).toContain("write operations available");
+    expect(app?.detail).toContain("formula and formatting tools available");
 
     const auto = report.checks.find((c) => c.name === "automation_permission");
     expect(auto?.status).toBe("ok");

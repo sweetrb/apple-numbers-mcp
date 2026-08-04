@@ -1,12 +1,15 @@
-# Automation Permission for Write & Format Operations
+# Automation Permission for Formula & Formatting Operations
 
 Apple Numbers MCP has **two distinct backends**, and only one of them needs a
-special macOS permission:
+special macOS permission. The split is **values vs. formatting**, not read vs.
+write:
 
-- **Reads** go through [numbers-parser](https://pypi.org/project/numbers-parser/)
-  (Python). They open the `.numbers` file **directly** off disk and need **no**
-  special permission — just normal file access.
-- **Writes and formatting** go through **AppleScript driving Numbers.app**.
+- **Reads and value/structure writes** go through
+  [numbers-parser](https://pypi.org/project/numbers-parser/) (Python). They open
+  the `.numbers` file **directly** off disk and need **no** special permission —
+  just normal file access. No Apple event is ever sent, so Numbers.app doesn't
+  even have to be installed.
+- **Formulas and formatting** go through **AppleScript driving Numbers.app**.
   numbers-parser can't write styles or formulas, so the server scripts Numbers.app
   to do it. macOS gates one app controlling another behind the **Automation**
   permission, so these tools require it.
@@ -16,51 +19,50 @@ how to grant or reset it, what failure looks like, and how to verify.
 
 ## Which tools need Automation permission
 
-**Need it** (AppleScript → Numbers.app — writes, formulas, formatting, structure
-changes, CSV import, file creation):
+**Need it** (AppleScript → Numbers.app — formulas, styles, dimensions, merges):
 
-- `set-cell`, `set-cells-batch`
-- `add-rows`, `update-rows`, `delete-rows`
-- `add-sheet`, `add-table`, `rename-sheet`, `rename-table`
 - `set-formula`, `set-formulas-batch`
 - `set-cell-style`, `set-cells-style-batch`
 - `set-column-width`, `set-row-height`
 - `merge-cells`, `unmerge-cells`
-- `create-spreadsheet`
-- `import-csv`
 
-**Do NOT need it** (pure numbers-parser, file read directly off disk):
+**Do NOT need it** (pure numbers-parser, the file opened directly off disk):
 
-- `get-file-info`
-- `read-table`
-- `get-cell`
-- `search`
-- `export-table`
+- Reads — `get-file-info`, `read-table`, `get-cell`, `search`, `export-table`
+- Value writes — `set-cell`, `set-cells-batch`, `add-rows`, `update-rows`,
+  `delete-rows`
+- Structure writes — `add-sheet`, `add-table`, `rename-sheet`, `rename-table`
+- File creation — `create-spreadsheet`, `import-csv`
 - `health-check` / `doctor` (these only probe the environment)
 
-So you can fully inspect, search, and export a spreadsheet with no Automation
-permission at all. The permission only matters the moment you try to **change or
-format** a file.
+So you can inspect, search, export **and edit** a spreadsheet — cell values, whole
+rows, sheets and tables, new files from CSV — with no Automation permission at all,
+and with Numbers.app not installed. The permission only matters the moment you
+write a **live formula** or change **formatting** (font, color, number format,
+alignment, column width, row height, merges).
 
-> **Numbers.app must be installed.** The write/format path scripts Numbers.app, so
-> the app has to be present at `/Applications/Numbers.app` (or
-> `/System/Applications/Numbers.app`). Reads don't need it. If Numbers.app is
-> missing, `doctor` reports `numbers_app: warn` and the write tools fail.
+> **Numbers.app must be installed for the formula/format tools.** Only that path
+> scripts Numbers.app, so the app has to be present at `/Applications/Numbers.app`
+> (or `/System/Applications/Numbers.app`). Reads and the numbers-parser writes
+> don't need it. If Numbers.app is missing, `doctor` reports `numbers_app: warn`
+> and only the formula/format tools fail.
 
 ## How the permission prompt appears
 
-The **first time** a write/format tool runs, macOS shows a one-time dialog:
+The **first time** a formula or formatting tool runs, macOS shows a one-time
+dialog:
 
 > **"<Host App>" wants access to control "Numbers". Allowing control will provide
 > access to documents and data in "Numbers", and to perform actions within that
 > app.**
 
-Click **OK / Allow**. The grant is remembered, so subsequent writes don't prompt
+Click **OK / Allow**. The grant is remembered, so subsequent calls don't prompt
 again. The "host app" is whatever process launched the MCP server — Claude
 Desktop, Terminal, iTerm, or VS Code — **not** `node` and **not** Numbers.app.
 
-If the host app runs headless or the dialog is dismissed/denied, the write fails
-(see below) and you must grant the permission manually.
+If the host app runs headless or the dialog is dismissed/denied, the
+formula/format call fails (see below) and you must grant the permission manually.
+Value and structure writes are unaffected — they never send an Apple event.
 
 ## How to grant it manually
 
@@ -85,7 +87,7 @@ If the host app runs headless or the dialog is dismissed/denied, the write fails
 ## What failure looks like
 
 When the host app lacks Automation permission for Numbers, the AppleScript layer
-fails and the write/format tool returns an error containing:
+fails and the formula/format tool returns an error containing:
 
 ```
 Not authorized to send Apple events to Numbers.
@@ -95,9 +97,10 @@ Not authorized to send Apple events to Numbers.
 `"Numbers got an error: ..."` style messages if Numbers.app itself can't be
 driven. In all of these cases the underlying `.numbers` file is **not** modified.
 
-If you instead see **"Numbers.app not running"** or a message that Numbers.app
-can't be found, the problem is that the app isn't installed/openable — open
-Numbers.app once and retry.
+If you instead see an error saying Numbers can't be found or isn't running, the
+problem is that the app isn't installed/openable — install Numbers.app and retry.
+(The tools do **not** require Numbers.app to already be running: the AppleScript
+layer launches it and opens the file itself. It does have to be *installed*.)
 
 ## Resetting the permission
 
@@ -117,8 +120,10 @@ e.g.:
 tccutil reset AppleEvents com.apple.Terminal
 ```
 
-After resetting, **fully quit and reopen the host app**, then run any write tool
-(e.g. `set-cell`) and click **OK** when the dialog appears.
+After resetting, **fully quit and reopen the host app**, then run any
+formula/format tool (e.g. `set-cell-style`) and click **OK** when the dialog
+appears. A value write such as `set-cell` will *not* re-trigger the prompt — it
+never crosses the AppleScript boundary.
 
 ## Verifying
 
@@ -128,20 +133,26 @@ as `ok` / `warn` / `fail`:
 - **`python_interpreter`** — the resolved Python's path and version (warns when
   older than 3.11; stock macOS ships 3.9).
 - **`numbers_parser`** — is the Python read sidecar installed (powers all reads).
-- **`numbers_app`** — is Numbers.app present (required for any write/format tool).
-- **`automation_permission`** — an informational reminder that write tools need
-  Automation permission, granted on first use.
+- **`numbers_app`** — is Numbers.app present (required for the formula/format
+  tools; everything else works without it).
+- **`automation_permission`** — an informational reminder that the formula/format
+  tools need Automation permission, granted on first use.
 
 > **Note:** Automation permission can't be probed without actually trying to
 > control Numbers (that would itself trigger the prompt), so `doctor` reports it
 > **informationally** rather than testing it live. The definitive test is to run a
-> real write — e.g. `set-cell` on a scratch file. If it succeeds, the permission
-> is in place; if it returns *"Not authorized to send Apple events to Numbers,"*
-> grant or reset it as above.
+> tool that actually crosses the AppleScript boundary — e.g. `set-cell-style` (or
+> `set-formula`) on a scratch file. If it succeeds, the permission is in place; if
+> it returns *"Not authorized to send Apple events to Numbers,"* grant or reset it
+> as above.
+>
+> **Don't test with `set-cell`** (or any other value/structure write). Those run
+> on the numbers-parser sidecar and succeed whether or not the grant exists, so
+> they always "pass" and tell you nothing about the permission.
 
 ## See also
 
-- [docs/LIMITATIONS.md](./LIMITATIONS.md) — the full read-vs-write split and other
+- [docs/LIMITATIONS.md](./LIMITATIONS.md) — the full backend split and other
   limits.
 - [Known Limitations](../README.md#known-limitations) and
   [Security and Privacy](../README.md#security-and-privacy) in the README.
