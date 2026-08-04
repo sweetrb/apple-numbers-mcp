@@ -30,4 +30,27 @@ overrides:
   "brace-expansion@>=1.0.0 <1.1.18": 1.1.18
   "brace-expansion@>=2.0.0 <2.1.4": 2.1.4
   "brace-expansion@>=5.0.0 <5.0.9": 5.0.9
-  fast-uri: 3.1.4
+  # GHSA-7p8r-x3mc-p8w7 (high): fast-uri URI parsing. Patched in 3.1.5.
+  # In the SHIPPED bundle -- ajv (via @modelcontextprotocol/sdk) pulls it and
+  # esbuild inlines it into build/index.js -- so this one is load-bearing.
+  #
+  # Write every floor as a CARET RANGE, never an exact pin. This entry used to
+  # read `fast-uri: 3.1.4` (the pre-fix "security floor"), which silently
+  # became a CEILING the moment 3.1.5 shipped and held the tree on the
+  # vulnerable version. A caret stays inside ajv's expected major while
+  # letting patch fixes flow in.
+  fast-uri: ^3.1.5
+  # GHSA-mwp4-54f8-5fhr (high), plus GHSA-4xrf-jv44-h6hh and
+  # GHSA-22jq-vg5j-6vgg. Patched in 10.3.1; express-rate-limit (via
+  # @modelcontextprotocol/sdk) caps it at 10.2.0. Not in the shipped bundle
+  # (the HTTP transports are tree-shaken out of the stdio server), so this is
+  # install-tree hygiene rather than a runtime exposure.
+  ip-address: ^10.3.1
+  # GHSA-8j4g-w8fx-2239 (moderate) is fixed in hono 4.12.34, but that release
+  # is still inside pnpm's 1440-minute minimumReleaseAge window, so a floor
+  # here fails the install with ERR_PNPM_NO_MATURE_MATCHING_VERSION. The gate
+  # is deliberate -- do NOT add a minimumReleaseAgeExclude carve-out. hono is
+  # not in the shipped bundle either. Follow-up: add `hono: ^4.12.34` once the
+  # release matures. Verified 2026-08-03: `pnpm install` with the floor fails
+  # with "hono@4.12.34 was published at 2026-08-03T02:36:40.543Z, within the
+  # minimumReleaseAge cutoff (2026-08-03T02:33:52.495Z)" -- short by ~3 min.
