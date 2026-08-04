@@ -2,6 +2,9 @@
 
 ## [1.1.12] - 2026-08-03
 
+### Security
+- **Floored `hono` to `^4.12.34`, clearing GHSA-8j4g-w8fx-2239 (moderate).** This was deferred earlier the same day: the fix release was still inside the repo's 24-hour `minimumReleaseAge` soak — it missed by under three minutes — and no `minimumReleaseAgeExclude` carve-out was added, because the soak is the point. It matured at 2026-08-04T02:36:40Z and is floored now. `pnpm audit` reports **no known vulnerabilities**.
+
 ### Added
 - **`version-guard` now requires every version bump to be documented under a real `## [X.Y.Z]` CHANGELOG heading.** The guard already refused a bump to a version that was already on npm, but it never checked that the new version was described anywhere. Notes parked under `## [Unreleased]` are orphaned the moment the release ships: nothing in the release path renames that section — the `version` lifecycle script only syncs the plugin manifests — so the published version goes out undocumented while its release notes sit under a heading still claiming they are unreleased. apple-notes-mcp shipped 2.6.10 and 2.6.11 exactly that way before this check existed. A bump whose version has no matching heading now hard-fails the PR, with an error naming the heading to add. Keep an empty `## [Unreleased]` at the top regardless — `dependabot-rebuild.yml` hard-exits without that marker, and since it already inserts a real heading, bot PRs pass unchanged. The guard file lives in `.github/`, which does not ship, so this owes no version bump. Matches apple-mail-mcp#124, keeping the guard identical across the four servers. (#50)
 

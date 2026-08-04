@@ -46,11 +46,11 @@ overrides:
   # (the HTTP transports are tree-shaken out of the stdio server), so this is
   # install-tree hygiene rather than a runtime exposure.
   ip-address: ^10.3.1
-  # GHSA-8j4g-w8fx-2239 (moderate) is fixed in hono 4.12.34, but that release
-  # is still inside pnpm's 1440-minute minimumReleaseAge window, so a floor
-  # here fails the install with ERR_PNPM_NO_MATURE_MATCHING_VERSION. The gate
-  # is deliberate -- do NOT add a minimumReleaseAgeExclude carve-out. hono is
-  # not in the shipped bundle either. Follow-up: add `hono: ^4.12.34` once the
-  # release matures. Verified 2026-08-03: `pnpm install` with the floor fails
-  # with "hono@4.12.34 was published at 2026-08-03T02:36:40.543Z, within the
-  # minimumReleaseAge cutoff (2026-08-03T02:33:52.495Z)" -- short by ~3 min.
+  # GHSA-8j4g-w8fx-2239 (moderate): ReDoS in Hono's CORS middleware, fixed in
+  # 4.12.34. Deferred earlier the same day because that release was still inside
+  # the 1440-minute minimumReleaseAge soak declared above — it missed by under
+  # three minutes. It matured at 2026-08-04T02:36:40Z and is floored here now.
+  # No minimumReleaseAgeExclude carve-out was ever added; the soak is deliberate.
+  # Reached via @modelcontextprotocol/sdk -> @hono/node-server; not in the
+  # shipped build/index.js bundle, so the exposure was supply-chain only.
+  hono: ^4.12.34
