@@ -102,7 +102,7 @@ leave it open afterwards.
   new table is 1 row × `headers.length` columns; without them it is a **12 × 8**
   grid of empty cells. The response reports the dimensions either way.
 - **`import-csv` auto-types CSV/TSV fields.** `01234` becomes the number `1234`
-  and `1e5` becomes `100000.0`, so zero-padded identifiers lose their leading
+  and `1e5` becomes the number `100000`, so zero-padded identifiers lose their leading
   zeros. JSON input is passed through untouched.
 
 ## Core workflow: inspect, then act

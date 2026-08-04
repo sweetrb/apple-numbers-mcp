@@ -67,7 +67,7 @@ number. That is deliberately *less* conservative than the value-write tools
 (`set-cell`, `set-cells-batch`, `add-rows`, `update-rows`), which reject
 leading-zero integers so identifier-like strings keep their exact text. So a zip
 code `01234` imports as the number `1234`, `007` imports as `7`, and a part number
-`1e5` imports as `100000.0`. There is no per-column type control on import, and the
+`1e5` imports as the number `100000`. There is no per-column type control on import, and the
 conversion isn't reversible once the `.numbers` file is written.
 
 A `json` source does **not** do this — those values go straight through, so a JSON
