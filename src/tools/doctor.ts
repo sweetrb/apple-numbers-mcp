@@ -9,6 +9,7 @@
  *
  * @module tools/doctor
  */
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { NumbersManager } from "../services/numbersManager.js";
 import { checkDependencies, getPythonInfo, setupHint } from "../utils/python.js";
@@ -24,8 +25,56 @@ export interface DoctorReport {
   checks: DoctorCheck[];
 }
 
-/** Candidate install locations for Numbers.app. */
-const NUMBERS_APP_PATHS = ["/Applications/Numbers.app", "/System/Applications/Numbers.app"];
+/**
+ * Candidate install locations for Numbers, newest naming first.
+ *
+ * Apple's 2026 iWork refresh renamed the bundle to `Numbers Creator Studio.app`
+ * (and moved the bundle ID from `com.apple.iWork.Numbers` to `com.apple.Numbers`),
+ * so a check that knew only `Numbers.app` reported "not found" on every machine
+ * that had upgraded. This list is only a cheap fast path — {@link findNumbersApp}
+ * falls back to Launch Services, which is what actually makes the check
+ * rename-proof going forward.
+ */
+const NUMBERS_APP_PATHS = [
+  "/Applications/Numbers.app",
+  "/System/Applications/Numbers.app",
+  "/Applications/Numbers Creator Studio.app",
+  "/System/Applications/Numbers Creator Studio.app",
+];
+
+/**
+ * Bundle IDs to ask Launch Services about: the current one first, then the
+ * pre-2026 ID so the probe keeps working on machines that haven't upgraded.
+ */
+const NUMBERS_BUNDLE_IDS = ["com.apple.Numbers", "com.apple.iWork.Numbers"];
+
+/**
+ * Locate the Numbers application bundle, or return null if it isn't installed.
+ *
+ * Tries the known paths first (no subprocess), then asks Launch Services to
+ * resolve each candidate bundle ID. `path to application id` is a registry
+ * lookup — it does not launch Numbers and needs no Automation permission.
+ */
+function findNumbersApp(): string | null {
+  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync(p));
+  if (byPath) return byPath;
+
+  for (const id of NUMBERS_BUNDLE_IDS) {
+    try {
+      const out = execFileSync(
+        "osascript",
+        ["-e", `POSIX path of (path to application id "${id}")`],
+        { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }
+      ).trim();
+      // Strip the trailing slash AppleScript puts on bundle paths.
+      const path = out.endsWith("/") ? out.slice(0, -1) : out;
+      if (path && existsSync(path)) return path;
+    } catch {
+      // Not registered under this ID (or osascript unavailable) — try the next.
+    }
+  }
+  return null;
+}
 
 /**
  * Run all diagnostic checks. This function NEVER throws — every probe is wrapped
@@ -93,22 +142,22 @@ export function runDoctor(_manager: NumbersManager): DoctorReport {
   //    Reads and value/structure writes via numbers-parser still work without it,
   //    so its absence is a warn, not a fail.
   try {
-    const found = NUMBERS_APP_PATHS.find((p) => existsSync(p));
+    const found = findNumbersApp();
     if (found) {
       checks.push({
         name: "numbers_app",
         status: "ok",
-        detail: `Numbers.app present — formula and formatting tools available (${found})`,
+        detail: `Numbers present — formula and formatting tools available (${found})`,
       });
     } else {
       checks.push({
         name: "numbers_app",
         status: "warn",
         detail:
-          "Numbers.app not found. Reads, exports and value/structure writes via " +
+          "Numbers not found. Reads, exports and value/structure writes via " +
           "numbers-parser still work; only the formula and formatting tools " +
           "(set-formula(s), set-cell(s)-style, set-column-width/set-row-height, " +
-          "merge-cells/unmerge-cells) need Numbers.app installed.",
+          "merge-cells/unmerge-cells) need Numbers installed.",
       });
     }
   } catch (e) {

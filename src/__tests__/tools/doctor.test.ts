@@ -10,14 +10,22 @@ vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
 }));
 
+// The Numbers lookup falls back to Launch Services via osascript when no known
+// path exists. Mock it so the suite never shells out to the real host.
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(),
+}));
+
 import { runDoctor, formatDoctorReport } from "../../tools/doctor.js";
 import { checkDependencies, getPythonInfo } from "../../utils/python.js";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import type { NumbersManager } from "../../services/numbersManager.js";
 
 const checkMock = vi.mocked(checkDependencies);
 const pythonInfoMock = vi.mocked(getPythonInfo);
 const existsMock = vi.mocked(existsSync);
+const execMock = vi.mocked(execFileSync);
 
 /** runDoctor only needs a NumbersManager-shaped object; nothing is called on it. */
 const fakeManager = {} as unknown as NumbersManager;
@@ -27,6 +35,11 @@ describe("runDoctor", () => {
     checkMock.mockReset();
     pythonInfoMock.mockReset();
     existsMock.mockReset();
+    execMock.mockReset();
+    // Default: Launch Services knows nothing, so path probing decides the result.
+    execMock.mockImplementation(() => {
+      throw new Error("not registered");
+    });
     pythonInfoMock.mockReturnValue({ path: "/usr/bin/python3", version: "Python 3.12.4" });
   });
 
@@ -122,6 +135,84 @@ describe("runDoctor", () => {
     // Parser is OK and nothing failed, so the report stays healthy.
     expect(report.healthy).toBe(true);
     expect(report.checks.some((c) => c.status === "fail")).toBe(false);
+  });
+
+  // Regression: Apple's 2026 iWork refresh renamed the bundle to
+  // "Numbers Creator Studio.app" and moved the bundle ID to com.apple.Numbers.
+  // The old check knew only "/Applications/Numbers.app" and so reported
+  // "not found" on every upgraded Mac, even with Numbers running in the Dock.
+  it("finds Numbers under the 2026 'Creator Studio' bundle name", () => {
+    checkMock.mockReturnValue({
+      ok: true,
+      message: "All dependencies available (numbers-parser 4.4.5)",
+    });
+    existsMock.mockImplementation((p) => p === "/Applications/Numbers Creator Studio.app");
+
+    const report = runDoctor(fakeManager);
+
+    const app = report.checks.find((c) => c.name === "numbers_app");
+    expect(app?.status).toBe("ok");
+    expect(app?.detail).toContain("Numbers Creator Studio.app");
+    // Resolved from the path list — no need to consult Launch Services.
+    expect(execMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Launch Services when Numbers is at an unknown path", () => {
+    checkMock.mockReturnValue({
+      ok: true,
+      message: "All dependencies available (numbers-parser 4.4.5)",
+    });
+    const resolved = "/Applications/iWork/Numbers Whatever They Call It Next.app";
+    // No hard-coded path matches; only the Launch Services answer does.
+    existsMock.mockImplementation((p) => p === resolved);
+    execMock.mockReturnValue(`${resolved}/\n` as unknown as Buffer);
+
+    const report = runDoctor(fakeManager);
+
+    const app = report.checks.find((c) => c.name === "numbers_app");
+    expect(app?.status).toBe("ok");
+    expect(app?.detail).toContain(resolved);
+
+    // Asks Launch Services by bundle ID, current ID first, and never launches Numbers.
+    const script = String(execMock.mock.calls[0]?.[1]?.[1]);
+    expect(script).toContain("com.apple.Numbers");
+    expect(script).toContain("path to application id");
+  });
+
+  it("still resolves via the pre-2026 bundle ID on machines that never upgraded", () => {
+    checkMock.mockReturnValue({
+      ok: true,
+      message: "All dependencies available (numbers-parser 4.4.5)",
+    });
+    const legacy = "/Volumes/Spare/Numbers.app";
+    existsMock.mockImplementation((p) => p === legacy);
+    execMock.mockImplementation((_cmd, args) => {
+      const script = String((args as string[])[1]);
+      if (script.includes("com.apple.iWork.Numbers")) return legacy as unknown as Buffer;
+      throw new Error("not registered");
+    });
+
+    const report = runDoctor(fakeManager);
+
+    const app = report.checks.find((c) => c.name === "numbers_app");
+    expect(app?.status).toBe("ok");
+    expect(app?.detail).toContain(legacy);
+    expect(execMock).toHaveBeenCalledTimes(2); // current ID tried first, then legacy
+  });
+
+  it("warns when Launch Services reports a path that no longer exists", () => {
+    checkMock.mockReturnValue({
+      ok: true,
+      message: "All dependencies available (numbers-parser 4.4.5)",
+    });
+    existsMock.mockReturnValue(false); // stale registration — bundle is gone
+    execMock.mockReturnValue("/Applications/Numbers Creator Studio.app/\n" as unknown as Buffer);
+
+    const report = runDoctor(fakeManager);
+
+    const app = report.checks.find((c) => c.name === "numbers_app");
+    expect(app?.status).toBe("warn");
+    expect(report.healthy).toBe(true);
   });
 
   it("never throws even if a probe throws", () => {
