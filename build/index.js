@@ -22116,8 +22116,32 @@ function withErrorHandling(handler, prefix) {
 }
 
 // src/tools/doctor.ts
+import { execFileSync as execFileSync3 } from "node:child_process";
 import { existsSync as existsSync3 } from "node:fs";
-var NUMBERS_APP_PATHS = ["/Applications/Numbers.app", "/System/Applications/Numbers.app"];
+var NUMBERS_APP_PATHS = [
+  "/Applications/Numbers.app",
+  "/System/Applications/Numbers.app",
+  "/Applications/Numbers Creator Studio.app",
+  "/System/Applications/Numbers Creator Studio.app"
+];
+var NUMBERS_BUNDLE_IDS = ["com.apple.Numbers", "com.apple.iWork.Numbers"];
+function findNumbersApp() {
+  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync3(p));
+  if (byPath) return byPath;
+  for (const id of NUMBERS_BUNDLE_IDS) {
+    try {
+      const out = execFileSync3(
+        "osascript",
+        ["-e", `POSIX path of (path to application id "${id}")`],
+        { encoding: "utf8", timeout: 5e3, stdio: ["ignore", "pipe", "ignore"] }
+      ).trim();
+      const path = out.endsWith("/") ? out.slice(0, -1) : out;
+      if (path && existsSync3(path)) return path;
+    } catch {
+    }
+  }
+  return null;
+}
 function runDoctor(_manager) {
   const checks = [];
   try {
@@ -22159,18 +22183,18 @@ function runDoctor(_manager) {
     });
   }
   try {
-    const found = NUMBERS_APP_PATHS.find((p) => existsSync3(p));
+    const found = findNumbersApp();
     if (found) {
       checks.push({
         name: "numbers_app",
         status: "ok",
-        detail: `Numbers.app present \u2014 formula and formatting tools available (${found})`
+        detail: `Numbers present \u2014 formula and formatting tools available (${found})`
       });
     } else {
       checks.push({
         name: "numbers_app",
         status: "warn",
-        detail: "Numbers.app not found. Reads, exports and value/structure writes via numbers-parser still work; only the formula and formatting tools (set-formula(s), set-cell(s)-style, set-column-width/set-row-height, merge-cells/unmerge-cells) need Numbers.app installed."
+        detail: "Numbers not found. Reads, exports and value/structure writes via numbers-parser still work; only the formula and formatting tools (set-formula(s), set-cell(s)-style, set-column-width/set-row-height, merge-cells/unmerge-cells) need Numbers installed."
       });
     }
   } catch (e) {
