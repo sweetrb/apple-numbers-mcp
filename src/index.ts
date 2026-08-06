@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  McpServer,
+  type RegisteredTool,
+  type ToolCallback,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
@@ -52,7 +57,52 @@ const server = new McpServer({
 });
 
 // health-check
-server.registerTool(
+/**
+ * Register a tool, advertising its `outputSchema` as PERMISSIVE.
+ *
+ * The MCP **client** validates a result's `structuredContent` against the JSON
+ * Schema the server advertised — not against the server's own zod object. A
+ * bare zod raw shape renders as `additionalProperties: false`, so a payload
+ * carrying any field the schema didn't enumerate is rejected client-side with
+ * `-32602 … data must NOT have additional properties`, discarding a result the
+ * handler produced correctly. The server never sees it, because zod's own parse
+ * silently *strips* unknown keys rather than failing — which is why the
+ * registerTool/outputSchema migration's "all fields optional, no `.strict()`"
+ * was believed to be permissive. It covered optionality; it did not cover
+ * undeclared keys.
+ *
+ * `.passthrough()` advertises `additionalProperties: true`, which is the
+ * contract that migration intended: a declared field documents the shape, an
+ * undeclared one is carried through instead of nuking the whole result. This is
+ * not hypothetical — it took down `get-mail-stats` in the sibling
+ * apple-mail-mcp (sweetrb/apple-mail-mcp#135), where every tool was likewise
+ * advertising `additionalProperties: false` and the one tool whose payload
+ * carried an undeclared key failed on every call. Enforced for every tool here
+ * by the outputSchema contract test.
+ */
+function registerTool<
+  OutputArgs extends z.ZodRawShape,
+  InputArgs extends undefined | z.ZodRawShape = undefined,
+>(
+  name: string,
+  config: {
+    title?: string;
+    description?: string;
+    inputSchema?: InputArgs;
+    outputSchema?: OutputArgs;
+    annotations?: ToolAnnotations;
+  },
+  cb: ToolCallback<InputArgs>
+): RegisteredTool {
+  const { outputSchema, ...rest } = config;
+  return server.registerTool(
+    name,
+    outputSchema ? { ...rest, outputSchema: z.object(outputSchema).passthrough() } : rest,
+    cb
+  );
+}
+
+registerTool(
   "health-check",
   {
     description:
@@ -74,7 +124,7 @@ server.registerTool(
 );
 
 // doctor
-server.registerTool(
+registerTool(
   "doctor",
   {
     description:
@@ -104,7 +154,7 @@ server.registerTool(
 );
 
 // get-file-info
-server.registerTool(
+registerTool(
   "get-file-info",
   {
     description:
@@ -161,7 +211,7 @@ server.registerTool(
 );
 
 // read-table
-server.registerTool(
+registerTool(
   "read-table",
   {
     description:
@@ -217,7 +267,7 @@ server.registerTool(
 );
 
 // search
-server.registerTool(
+registerTool(
   "search",
   {
     description:
@@ -263,7 +313,7 @@ server.registerTool(
 );
 
 // export-table
-server.registerTool(
+registerTool(
   "export-table",
   {
     description:
@@ -297,7 +347,7 @@ server.registerTool(
 );
 
 // get-cell
-server.registerTool(
+registerTool(
   "get-cell",
   {
     description:
@@ -336,7 +386,7 @@ server.registerTool(
 );
 
 // create-spreadsheet
-server.registerTool(
+registerTool(
   "create-spreadsheet",
   {
     description:
@@ -383,7 +433,7 @@ server.registerTool(
 );
 
 // set-cell
-server.registerTool(
+registerTool(
   "set-cell",
   {
     description:
@@ -427,7 +477,7 @@ server.registerTool(
 );
 
 // set-cells-batch
-server.registerTool(
+registerTool(
   "set-cells-batch",
   {
     description:
@@ -476,7 +526,7 @@ server.registerTool(
 );
 
 // add-rows
-server.registerTool(
+registerTool(
   "add-rows",
   {
     description:
@@ -516,7 +566,7 @@ server.registerTool(
 );
 
 // delete-rows
-server.registerTool(
+registerTool(
   "delete-rows",
   {
     description:
@@ -560,7 +610,7 @@ server.registerTool(
 );
 
 // add-sheet
-server.registerTool(
+registerTool(
   "add-sheet",
   {
     description:
@@ -597,7 +647,7 @@ server.registerTool(
 );
 
 // add-table
-server.registerTool(
+registerTool(
   "add-table",
   {
     description:
@@ -634,7 +684,7 @@ server.registerTool(
 );
 
 // import-csv
-server.registerTool(
+registerTool(
   "import-csv",
   {
     description:
@@ -682,7 +732,7 @@ server.registerTool(
 );
 
 // update-rows
-server.registerTool(
+registerTool(
   "update-rows",
   {
     description:
@@ -726,7 +776,7 @@ server.registerTool(
 );
 
 // rename-sheet
-server.registerTool(
+registerTool(
   "rename-sheet",
   {
     description:
@@ -755,7 +805,7 @@ server.registerTool(
 );
 
 // rename-table
-server.registerTool(
+registerTool(
   "rename-table",
   {
     description:
@@ -786,7 +836,7 @@ server.registerTool(
 );
 
 // set-formula
-server.registerTool(
+registerTool(
   "set-formula",
   {
     description:
@@ -822,7 +872,7 @@ server.registerTool(
 );
 
 // set-formulas-batch
-server.registerTool(
+registerTool(
   "set-formulas-batch",
   {
     description:
@@ -904,7 +954,7 @@ const cellStyleSchema = z.object({
 });
 
 // set-cell-style
-server.registerTool(
+registerTool(
   "set-cell-style",
   {
     description:
@@ -937,7 +987,7 @@ server.registerTool(
 );
 
 // set-cells-style-batch
-server.registerTool(
+registerTool(
   "set-cells-style-batch",
   {
     description:
@@ -978,7 +1028,7 @@ server.registerTool(
 );
 
 // set-column-width
-server.registerTool(
+registerTool(
   "set-column-width",
   {
     description:
@@ -1014,7 +1064,7 @@ server.registerTool(
 );
 
 // set-row-height
-server.registerTool(
+registerTool(
   "set-row-height",
   {
     description:
@@ -1050,7 +1100,7 @@ server.registerTool(
 );
 
 // merge-cells
-server.registerTool(
+registerTool(
   "merge-cells",
   {
     description:
@@ -1083,7 +1133,7 @@ server.registerTool(
 );
 
 // unmerge-cells
-server.registerTool(
+registerTool(
   "unmerge-cells",
   {
     description:
