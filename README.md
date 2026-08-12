@@ -765,6 +765,11 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 - Run `claude mcp list` to check for conflicting scopes; project-scope `.mcp.json` outranks a user-scope `apple-numbers` entry, and a local-scope entry outranks both.
 - If the server is listed as pending, approve the project-scope server when Claude Code prompts.
 
+### Every tool is rejected with "invalid outputSchema … unsupported dialect"
+- Full symptom: `Tool '<name>' has an invalid outputSchema: JSON Schema declares an unsupported dialect ("$schema": "http://json-schema.org/draft-07/schema#"). The default validator supports JSON Schema 2020-12 only.` The host refuses **every** tool, so the server looks completely dead even though it started fine.
+- **Upgrade to 1.1.17 or newer.** MCP standardized on JSON Schema 2020-12, and hosts now reject any other dialect; releases before 1.1.17 advertised draft-07 because the MCP SDK emits it. 1.1.17 advertises `https://json-schema.org/draft/2020-12/schema` on every tool's `inputSchema` and `outputSchema`.
+- If you installed via `npx -y apple-numbers-mcp`, restart the host to pick up the new version; if you run from a clone, `git pull && pnpm install && pnpm run build`.
+
 ### "File not found"
 - Check the path; expand `~` if your shell isn't doing it.
 - Ensure the file extension is `.numbers`.

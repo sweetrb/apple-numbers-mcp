@@ -12,6 +12,9 @@
  *      structuredContent is missing or fails the schema, which rejects callTool —
  *      so a resolving call proves a real payload validates against its schema.
  *      (Environment failures return isError results, which the SDK exempts.)
+ *   4. every advertised schema declares the JSON Schema 2020-12 dialect and uses
+ *      no draft-07-only construct — a client rejects EVERY tool otherwise
+ *      (sweetrb/apple-mail-mcp#147)
  *
  * Needs no .numbers file, so it always runs (including CI). The Python sidecar
  * auto-bootstrap is disabled so the diagnostic round-trip stays fast and offline.
@@ -90,6 +93,58 @@ describe("outputSchema contract (real server over stdio)", () => {
       `outputSchemas must tolerate undeclared keys — these advertise ` +
         `additionalProperties:false, so any field they don't enumerate is rejected ` +
         `client-side and the whole result is lost: ${offenders.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("every advertised schema declares JSON Schema 2020-12, with no draft-07 construct", async () => {
+    // MCP standardized on JSON Schema 2020-12; a client rejects every tool when
+    // the server advertises another dialect:
+    //   Tool '<name>' has an invalid outputSchema: JSON Schema declares an
+    //   unsupported dialect ("$schema": "http://json-schema.org/draft-07/schema#").
+    // The SDK calls its Zod converter without a target, so it emits draft-07
+    // regardless of the Zod major — src/utils/jsonSchemaDialect.ts normalizes the
+    // outgoing tools/list at the transport boundary. This asserts the schemas the
+    // server ACTUALLY advertises, which is the only thing the client sees.
+    // Origin: sweetrb/apple-mail-mcp#135's sibling report, sweetrb/apple-mail-mcp#147.
+    const { tools } = await client.listTools();
+    const EXPECTED = "https://json-schema.org/draft/2020-12/schema";
+    // Keywords that exist only in the older drafts. `definitions`/`dependencies`
+    // are still *parseable* under 2020-12 but carry no meaning there, so a schema
+    // emitting them is silently losing its constraints.
+    const LEGACY_KEYWORDS = ["definitions", "dependencies", "additionalItems"];
+
+    const offenders: string[] = [];
+    for (const tool of tools) {
+      for (const [kind, schema] of [
+        ["inputSchema", tool.inputSchema],
+        ["outputSchema", tool.outputSchema],
+      ] as const) {
+        if (!schema) continue;
+        const declared = (schema as { $schema?: unknown }).$schema;
+        if (declared !== EXPECTED) {
+          offenders.push(`${tool.name}.${kind}: $schema is ${JSON.stringify(declared)}`);
+        }
+        const serialized = JSON.stringify(schema);
+        if (serialized.includes("draft-07")) {
+          offenders.push(`${tool.name}.${kind}: contains a draft-07 reference`);
+        }
+        for (const keyword of LEGACY_KEYWORDS) {
+          if (serialized.includes(`"${keyword}":`)) {
+            offenders.push(`${tool.name}.${kind}: uses draft-07-only "${keyword}"`);
+          }
+        }
+        // Only a nested node may lack $schema; a nested declaration is illegal.
+        const nested = serialized.split('"$schema":').length - 1;
+        if (nested > 1) {
+          offenders.push(`${tool.name}.${kind}: declares $schema on ${nested} nodes (root only)`);
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      `every advertised schema must declare ${EXPECTED} and use no draft-07-only ` +
+        `construct — clients reject the whole tool otherwise: ${offenders.join("; ")}`
     ).toEqual([]);
   });
 
