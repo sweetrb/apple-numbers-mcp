@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+## [1.1.17] - 2026-08-12
+
+### Fixed
+
+- **Every tool was rejected by the client, because the advertised schemas declared JSON Schema draft-07.** MCP has standardized on **2020-12**, and hosts now refuse anything else — `Tool '<name>' has an invalid outputSchema: JSON Schema declares an unsupported dialect ("$schema": "http://json-schema.org/draft-07/schema#"). The default validator supports JSON Schema 2020-12 only.` The server starts and connects normally, so the failure presents as all 26 tools silently unavailable rather than as a crash. The dialect comes from the MCP SDK, not from this repo: `server/mcp.js` calls its Zod converter with **no `target`**, `mapMiniTarget(undefined)` resolves to `draft-7`, and every `inputSchema` and `outputSchema` is stamped draft-07 on the way out. **Upgrading Zod does not fix it** — both the v3 (`zod-to-json-schema`) and v4 (`zod/v4-mini` `toJSONSchema`) branches fall back to draft-07 without a target, verified empirically against SDK 1.30.0 + Zod 4.4.3 — so no dependency bump could have cleared this. The outgoing `tools/list` payload is now normalized at the **transport boundary**, the only public seam that does not reach into SDK internals: the 2020-12 dialect is re-stamped at each schema root, nested `$schema` declarations are stripped (illegal on a subschema), and the keywords that changed between the drafts are rewritten — `definitions` → `$defs` with its `#/definitions/…` `$ref`s repointed, tuple-form `items` → `prefixItems`, `additionalItems` → `items`, `dependencies` split into `dependentRequired`/`dependentSchemas`, and boolean `exclusiveMinimum`/`exclusiveMaximum` collapsed onto the numeric bound. Today's emitted schemas use **none** of those constructs, so the rewrite is a no-op on current output — it exists so a Zod construct added later cannot quietly reintroduce a draft-07-only keyword alongside a 2020-12 declaration, which would be worse than the bug it replaces. No tool, Zod schema, or handler changed; all 26 tools still register, and each now advertises `https://json-schema.org/draft/2020-12/schema` on both its input and output schema. Reported against the sibling server as sweetrb/apple-mail-mcp#147; all four Apple MCP servers were affected identically and are fixed in lockstep.
+
+### Added
+
+- **The `outputSchema` contract test now asserts the advertised dialect.** The existing checks boot the real built server over stdio and inspect what it advertises — every tool has an `outputSchema`, none requires a field, none sets `additionalProperties: false` — but none of them looked at `$schema`, so a dialect that made the client discard **every** tool passed CI cleanly. The suite now fails any advertised schema that does not declare 2020-12, that mentions `draft-07` anywhere, that uses a draft-07-only keyword (`definitions`, `dependencies`, `additionalItems`), or that declares `$schema` on more than one node. Unit tests for the converter itself cover each keyword rewrite and the transport wrapper.
+
 ## [1.1.16] - 2026-08-12
 
 ### Changed
