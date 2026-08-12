@@ -204,6 +204,15 @@ describe("toJsonSchema2020_12", () => {
     expect(convert({ exclusiveMinimum: true }).exclusiveMinimum).toBe(true);
   });
 
+  it("copies required through verbatim", () => {
+    // required holds instance data (property NAMES), never subschemas.
+    expect(convert({ required: ["a", "definitions", "$schema"] }).required).toEqual([
+      "a",
+      "definitions",
+      "$schema",
+    ]);
+  });
+
   it("does not mutate the input document", () => {
     const source: JsonObject = {
       $schema: DRAFT_07,
@@ -215,6 +224,201 @@ describe("toJsonSchema2020_12", () => {
     convert(source);
 
     expect(source).toEqual(snapshot);
+  });
+});
+
+/**
+ * Position awareness: a "properties" map's keys are caller-chosen TOOL
+ * PARAMETER NAMES, not schema keywords. Rewriting them corrupts the schema --
+ * a parameter named "definitions" would be renamed to "$defs", one named
+ * "$schema" would be silently deleted, and "required" would go on naming the
+ * original, producing a schema no input can satisfy. These cases pin the
+ * keyword rewrites to the positions where they are actually keywords.
+ */
+describe("toJsonSchema2020_12 — position awareness", () => {
+  it("keeps a tool parameter NAMED definitions and still converts its subschema", () => {
+    const converted = convert({
+      $schema: DRAFT_07,
+      type: "object",
+      properties: {
+        definitions: {
+          // Convertible content proves recursion still reaches the VALUE.
+          $schema: DRAFT_07,
+          type: "object",
+          properties: { note: { type: "string" } },
+        },
+      },
+      required: ["definitions"],
+    });
+
+    const properties = converted.properties as JsonObject;
+    // The NAME survives — not renamed to $defs, not hoisted out of properties.
+    expect(Object.keys(properties)).toEqual(["definitions"]);
+    expect(properties.$defs).toBeUndefined();
+    expect(converted.$defs).toBeUndefined();
+    // The VALUE was still converted: the nested draft-07 dialect is gone.
+    expect(properties.definitions).toEqual({
+      type: "object",
+      properties: { note: { type: "string" } },
+    });
+    expect(converted.required).toEqual(["definitions"]);
+    expect(JSON.stringify(converted)).not.toContain("draft-07");
+  });
+
+  it("preserves a tool parameter NAMED $schema so the schema stays satisfiable", () => {
+    const converted = convert({
+      $schema: DRAFT_07,
+      type: "object",
+      properties: {
+        $schema: { type: "string", description: "dialect the caller wants" },
+        path: { type: "string" },
+      },
+      required: ["$schema"],
+    });
+
+    const properties = converted.properties as JsonObject;
+    // Not deleted as if it were a nested dialect declaration.
+    expect(properties.$schema).toEqual({ type: "string", description: "dialect the caller wants" });
+    expect(converted.required).toEqual(["$schema"]);
+    // The ROOT declaration is still the one and only rewritten $schema.
+    expect(converted.$schema).toBe(JSON_SCHEMA_2020_12);
+    // The invariant that matters: every required name is still declared, so an
+    // input CAN satisfy the emitted schema.
+    for (const name of converted.required as string[]) {
+      expect(properties).toHaveProperty(name);
+    }
+  });
+
+  it("keeps tool parameters NAMED dependencies and additionalItems intact", () => {
+    const converted = convert({
+      type: "object",
+      properties: {
+        dependencies: { type: "array", items: { type: "string" } },
+        additionalItems: { type: "boolean" },
+      },
+      required: ["dependencies", "additionalItems"],
+    });
+
+    const properties = converted.properties as JsonObject;
+    expect(properties.dependencies).toEqual({ type: "array", items: { type: "string" } });
+    expect(properties.additionalItems).toEqual({ type: "boolean" });
+    // The keyword rewrites must not have fired at this position.
+    expect(properties.dependentRequired).toBeUndefined();
+    expect(properties.dependentSchemas).toBeUndefined();
+    expect(properties.items).toBeUndefined();
+    expect(converted.required).toEqual(["dependencies", "additionalItems"]);
+  });
+
+  it("still renames a REAL definitions block and rewrites #/definitions/ refs", () => {
+    const converted = convert({
+      $schema: DRAFT_07,
+      definitions: { Cell: { $schema: DRAFT_07, type: "string" } },
+      type: "object",
+      properties: {
+        // A caller-chosen name colliding with the keyword...
+        definitions: { type: "integer" },
+        // ...alongside a genuine pointer into the real definitions block.
+        cell: { $ref: "#/definitions/Cell" },
+      },
+    });
+
+    // Keyword position: renamed, and its VALUES converted.
+    expect(converted.$defs).toEqual({ Cell: { type: "string" } });
+    expect(converted.definitions).toBeUndefined();
+
+    // Data position: untouched.
+    const properties = converted.properties as JsonObject;
+    expect(properties.definitions).toEqual({ type: "integer" });
+    expect((properties.cell as JsonObject).$ref).toBe("#/$defs/Cell");
+  });
+
+  it("passes enum, const and default values through verbatim", () => {
+    const literal = { definitions: 1, $schema: "keep-me", items: [1, 2] };
+    const converted = convert({
+      type: "object",
+      properties: {
+        mode: {
+          enum: [{ definitions: 1 }, { $schema: "keep-me" }, "plain"],
+          default: { definitions: 1, $schema: "keep-me" },
+        },
+        fixed: { const: literal },
+        sampled: { examples: [{ additionalItems: true }] },
+      },
+    });
+
+    const properties = converted.properties as Record<string, JsonObject>;
+    expect(properties.mode.enum).toEqual([{ definitions: 1 }, { $schema: "keep-me" }, "plain"]);
+    expect(properties.mode.default).toEqual({ definitions: 1, $schema: "keep-me" });
+    expect(properties.fixed.const).toEqual(literal);
+    expect(properties.sampled.examples).toEqual([{ additionalItems: true }]);
+    // No keyword rewrite leaked into the literals.
+    expect((properties.mode.default as JsonObject).$defs).toBeUndefined();
+    expect((properties.fixed.const as JsonObject).$defs).toBeUndefined();
+    expect((properties.fixed.const as JsonObject).prefixItems).toBeUndefined();
+  });
+
+  it("leaves patternProperties and $defs map KEYS untouched while converting their values", () => {
+    const converted = convert({
+      type: "object",
+      // Regex keys are data too — they must survive character for character.
+      patternProperties: {
+        "^definitions$": { $schema: DRAFT_07, type: "string" },
+        "^\\$schema$": { type: "number", minimum: 1, exclusiveMinimum: true },
+      },
+      $defs: {
+        definitions: { $schema: DRAFT_07, type: "boolean" },
+        $schema: { type: "null" },
+      },
+    });
+
+    const patternProperties = converted.patternProperties as Record<string, JsonObject>;
+    expect(Object.keys(patternProperties).sort()).toEqual(["^\\$schema$", "^definitions$"]);
+    expect(patternProperties["^definitions$"]).toEqual({ type: "string" });
+    // The VALUE is a schema position, so keyword rewrites do apply there.
+    expect(patternProperties["^\\$schema$"]).toEqual({ type: "number", exclusiveMinimum: 1 });
+
+    const defs = converted.$defs as Record<string, JsonObject>;
+    expect(Object.keys(defs).sort()).toEqual(["$schema", "definitions"]);
+    expect(defs.definitions).toEqual({ type: "boolean" });
+    expect(defs.$schema).toEqual({ type: "null" });
+    expect(JSON.stringify(converted)).not.toContain("draft-07");
+  });
+
+  it("round-trips an apple-notes-mcp get-checklist-state shaped outputSchema", () => {
+    // Regression guard mirroring the real tool surface: an output property
+    // NAMED "items" whose value is itself an array-typed subschema. It lands in
+    // a safe branch today and must keep landing there — the ONLY change the
+    // converter is allowed to make is the root dialect.
+    const outputSchema = {
+      $schema: DRAFT_07,
+      type: "object",
+      properties: {
+        noteId: { type: "string" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              text: { type: "string" },
+              checked: { type: "boolean" },
+              index: { type: "number" },
+            },
+            required: ["text", "checked", "index"],
+            additionalProperties: false,
+          },
+        },
+        total: { type: "number" },
+        checkedCount: { type: "number" },
+      },
+      required: ["noteId", "items", "total", "checkedCount"],
+      additionalProperties: false,
+    };
+    const expected = JSON.parse(JSON.stringify(outputSchema));
+    expected.$schema = JSON_SCHEMA_2020_12;
+
+    expect(convert(outputSchema)).toEqual(expected);
+    // Specifically: no prefixItems anywhere, and the property is still "items".
+    expect(JSON.stringify(convert(outputSchema))).not.toContain("prefixItems");
   });
 });
 
