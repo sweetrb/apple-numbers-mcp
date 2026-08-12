@@ -15,6 +15,7 @@ import { successResponse, withErrorHandling } from "./tools/respond.js";
 import { runDoctor, formatDoctorReport } from "./tools/doctor.js";
 import { registerResourcesAndPrompts } from "./tools/resourcesAndPrompts.js";
 import { loadFileConfig } from "./services/fileConfig.js";
+import { withJsonSchema2020_12 } from "./utils/jsonSchemaDialect.js";
 
 // Load file-based config FIRST — before anything reads APPLE_NUMBERS_MCP_* env
 // vars — so settings survive a host that strips the MCP env block.
@@ -1184,7 +1185,7 @@ async function main() {
     console.error("[unhandledRejection]", reason);
   });
 
-  const transport = new StdioServerTransport();
+  const transport = withJsonSchema2020_12(new StdioServerTransport());
   await server.connect(transport);
   console.error(`apple-numbers-mcp v${version} running on stdio`);
 }

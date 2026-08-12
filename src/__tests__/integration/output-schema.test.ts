@@ -12,6 +12,9 @@
  *      structuredContent is missing or fails the schema, which rejects callTool —
  *      so a resolving call proves a real payload validates against its schema.
  *      (Environment failures return isError results, which the SDK exempts.)
+ *   4. every advertised schema declares the JSON Schema 2020-12 dialect and uses
+ *      no draft-07-only construct — a client rejects EVERY tool otherwise
+ *      (sweetrb/apple-mail-mcp#147)
  *
  * Needs no .numbers file, so it always runs (including CI). The Python sidecar
  * auto-bootstrap is disabled so the diagnostic round-trip stays fast and offline.
@@ -24,6 +27,33 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const SERVER = resolve(__dirname, "../../../build/index.js");
+
+// The keys of a `properties` map are caller-chosen TOOL PARAMETER NAMES, not
+// schema keywords, and enum/const/default hold instance DATA. Re-enter only
+// genuine subschema positions — the same distinction the normalizer itself
+// makes (see src/utils/jsonSchemaDialect.ts).
+const SCHEMA_MAP_KEYWORDS = ["properties", "patternProperties", "$defs", "dependentSchemas"];
+const DATA_KEYWORDS = ["enum", "const", "default", "examples", "required", "dependentRequired"];
+
+/** Re-enter only the subschema positions of `obj`, reporting each via `visit`. */
+function walkSubschemas(
+  obj: Record<string, unknown>,
+  path: string,
+  visit: (node: unknown, path: string) => void
+): void {
+  for (const [key, value] of Object.entries(obj)) {
+    if (DATA_KEYWORDS.includes(key)) continue;
+    if (SCHEMA_MAP_KEYWORDS.includes(key)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [name, sub] of Object.entries(value as Record<string, unknown>)) {
+          visit(sub, `${path}.${key}.${name}`);
+        }
+      }
+      continue;
+    }
+    visit(value, `${path}.${key}`);
+  }
+}
 
 describe("outputSchema contract (real server over stdio)", () => {
   let client: Client;
@@ -90,6 +120,85 @@ describe("outputSchema contract (real server over stdio)", () => {
       `outputSchemas must tolerate undeclared keys — these advertise ` +
         `additionalProperties:false, so any field they don't enumerate is rejected ` +
         `client-side and the whole result is lost: ${offenders.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("every advertised schema declares JSON Schema 2020-12, with no draft-07 construct", async () => {
+    // MCP standardized on JSON Schema 2020-12; a client rejects every tool when
+    // the server advertises another dialect:
+    //   Tool '<name>' has an invalid outputSchema: JSON Schema declares an
+    //   unsupported dialect ("$schema": "http://json-schema.org/draft-07/schema#").
+    // The SDK calls its Zod converter without a target, so it emits draft-07
+    // regardless of the Zod major — src/utils/jsonSchemaDialect.ts normalizes the
+    // outgoing tools/list at the transport boundary. This asserts the schemas the
+    // server ACTUALLY advertises, which is the only thing the client sees.
+    // Origin: sweetrb/apple-mail-mcp#135's sibling report, sweetrb/apple-mail-mcp#147.
+    const { tools } = await client.listTools();
+    const EXPECTED = "https://json-schema.org/draft/2020-12/schema";
+    // Keywords that exist only in the older drafts. `definitions`/`dependencies`
+    // are still *parseable* under 2020-12 but carry no meaning there, so a schema
+    // emitting them is silently losing its constraints.
+    const LEGACY_KEYWORDS = ["definitions", "dependencies", "additionalItems"];
+
+    const offenders: string[] = [];
+    for (const tool of tools) {
+      for (const [kind, schema] of [
+        ["inputSchema", tool.inputSchema],
+        ["outputSchema", tool.outputSchema],
+      ] as const) {
+        if (!schema) continue;
+        const declared = (schema as { $schema?: unknown }).$schema;
+        if (declared !== EXPECTED) {
+          offenders.push(`${tool.name}.${kind}: $schema is ${JSON.stringify(declared)}`);
+        }
+        if (JSON.stringify(schema).includes("draft-07")) {
+          offenders.push(`${tool.name}.${kind}: contains a draft-07 reference`);
+        }
+
+        // Walk schema POSITIONS, not raw text: a substring scan false-flags a
+        // tool that legitimately has a parameter NAMED "definitions", since the
+        // keys of a `properties` map are caller-chosen names, not keywords.
+        const walk = (node: unknown, path: string): void => {
+          if (Array.isArray(node)) {
+            node.forEach((child, i) => walk(child, `${path}[${i}]`));
+            return;
+          }
+          if (typeof node !== "object" || node === null) return;
+          const obj = node as Record<string, unknown>;
+
+          for (const keyword of LEGACY_KEYWORDS) {
+            if (keyword in obj) {
+              offenders.push(
+                `${tool.name}.${kind}: draft-07-only "${keyword}" at ${path || "root"}`
+              );
+            }
+          }
+          if (Array.isArray(obj.items)) {
+            offenders.push(`${tool.name}.${kind}: tuple-form "items" at ${path || "root"}`);
+          }
+          for (const k of ["exclusiveMinimum", "exclusiveMaximum"] as const) {
+            if (typeof obj[k] === "boolean") {
+              offenders.push(`${tool.name}.${kind}: boolean ${k} at ${path || "root"}`);
+            }
+          }
+          if (typeof obj.$ref === "string" && obj.$ref.startsWith("#/definitions/")) {
+            offenders.push(`${tool.name}.${kind}: $ref into #/definitions/ (now #/$defs/)`);
+          }
+          // Only the ROOT may declare a dialect.
+          if (path !== "" && "$schema" in obj) {
+            offenders.push(`${tool.name}.${kind}: nested $schema at ${path}`);
+          }
+
+          walkSubschemas(obj, path, walk);
+        };
+        walk(schema as Record<string, unknown>, "");
+      }
+    }
+
+    expect(
+      offenders,
+      `every advertised schema must declare ${EXPECTED} and use no draft-07-only ` +
+        `construct — clients reject the whole tool otherwise: ${offenders.join("; ")}`
     ).toEqual([]);
   });
 
