@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.1.16] - 2026-08-12
+
+### Changed
+
+- **Bumped the `numbers-parser` runtime pin from 4.18.5 to 4.19.0.** This is the Python sidecar that backs every read and every value/structure write, so it is a **runtime** dependency of the published package — `requirements.txt` is shipped bytes and the bump owes a version bump, which Dependabot cannot add on a pip PR. Upstream fixes cell-border rendering (masaccio/numbers-parser#152), the performance of `Table.set_cell_border()`, and row height / column width after border manipulation; the minor bump is because border *behaviour* changed — layers of borders are no longer retained. This server never calls the border API, so that change is not reachable from any tool here. Verified against real spreadsheets rather than trusting CI, since the unit tests mock the sidecar: `info`/`read`/`create`/`set-cell` all exit 0 with **clean JSON on stdout and empty stderr**; a 226-row × 8-column real inventory file round-tripped a `set-cell` write and re-opened with its row and column counts intact; `doctor` reports `numbers-parser 4.19.0` healthy; and `get-file-info` / `read-table` return correct data end-to-end through the MCP server. (#60)
+
 ### Security
 
 - **Floored `js-yaml` to `^4.3.1`, clearing GHSA-5p4m-2wfm-xmqj (high).** Quadratic CPU consumption while resolving `!!omap` keys — a malicious YAML document can be made to burn CPU superlinearly in the number of map entries. The advisory notes the CVE-2026-59870 fix was never backported to the 3.x line, so 4.3.1 is the first complete release. `js-yaml` reaches the tree as `eslint` -> `js-yaml`, which is **development scope**, and it does not appear in the committed `build/index.js` — verified, 0 references — so no published artifact ever carried it and this owes no version bump. No `js-yaml` override existed here before; apple-mail-mcp carried one pinned at `^4.2.0` — below this fix — which is how the gap was found.
