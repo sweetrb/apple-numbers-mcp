@@ -28,6 +28,33 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const SERVER = resolve(__dirname, "../../../build/index.js");
 
+// The keys of a `properties` map are caller-chosen TOOL PARAMETER NAMES, not
+// schema keywords, and enum/const/default hold instance DATA. Re-enter only
+// genuine subschema positions — the same distinction the normalizer itself
+// makes (see src/utils/jsonSchemaDialect.ts).
+const SCHEMA_MAP_KEYWORDS = ["properties", "patternProperties", "$defs", "dependentSchemas"];
+const DATA_KEYWORDS = ["enum", "const", "default", "examples", "required", "dependentRequired"];
+
+/** Re-enter only the subschema positions of `obj`, reporting each via `visit`. */
+function walkSubschemas(
+  obj: Record<string, unknown>,
+  path: string,
+  visit: (node: unknown, path: string) => void
+): void {
+  for (const [key, value] of Object.entries(obj)) {
+    if (DATA_KEYWORDS.includes(key)) continue;
+    if (SCHEMA_MAP_KEYWORDS.includes(key)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [name, sub] of Object.entries(value as Record<string, unknown>)) {
+          visit(sub, `${path}.${key}.${name}`);
+        }
+      }
+      continue;
+    }
+    visit(value, `${path}.${key}`);
+  }
+}
+
 describe("outputSchema contract (real server over stdio)", () => {
   let client: Client;
 
@@ -124,20 +151,47 @@ describe("outputSchema contract (real server over stdio)", () => {
         if (declared !== EXPECTED) {
           offenders.push(`${tool.name}.${kind}: $schema is ${JSON.stringify(declared)}`);
         }
-        const serialized = JSON.stringify(schema);
-        if (serialized.includes("draft-07")) {
+        if (JSON.stringify(schema).includes("draft-07")) {
           offenders.push(`${tool.name}.${kind}: contains a draft-07 reference`);
         }
-        for (const keyword of LEGACY_KEYWORDS) {
-          if (serialized.includes(`"${keyword}":`)) {
-            offenders.push(`${tool.name}.${kind}: uses draft-07-only "${keyword}"`);
+
+        // Walk schema POSITIONS, not raw text: a substring scan false-flags a
+        // tool that legitimately has a parameter NAMED "definitions", since the
+        // keys of a `properties` map are caller-chosen names, not keywords.
+        const walk = (node: unknown, path: string): void => {
+          if (Array.isArray(node)) {
+            node.forEach((child, i) => walk(child, `${path}[${i}]`));
+            return;
           }
-        }
-        // Only a nested node may lack $schema; a nested declaration is illegal.
-        const nested = serialized.split('"$schema":').length - 1;
-        if (nested > 1) {
-          offenders.push(`${tool.name}.${kind}: declares $schema on ${nested} nodes (root only)`);
-        }
+          if (typeof node !== "object" || node === null) return;
+          const obj = node as Record<string, unknown>;
+
+          for (const keyword of LEGACY_KEYWORDS) {
+            if (keyword in obj) {
+              offenders.push(
+                `${tool.name}.${kind}: draft-07-only "${keyword}" at ${path || "root"}`
+              );
+            }
+          }
+          if (Array.isArray(obj.items)) {
+            offenders.push(`${tool.name}.${kind}: tuple-form "items" at ${path || "root"}`);
+          }
+          for (const k of ["exclusiveMinimum", "exclusiveMaximum"] as const) {
+            if (typeof obj[k] === "boolean") {
+              offenders.push(`${tool.name}.${kind}: boolean ${k} at ${path || "root"}`);
+            }
+          }
+          if (typeof obj.$ref === "string" && obj.$ref.startsWith("#/definitions/")) {
+            offenders.push(`${tool.name}.${kind}: $ref into #/definitions/ (now #/$defs/)`);
+          }
+          // Only the ROOT may declare a dialect.
+          if (path !== "" && "$schema" in obj) {
+            offenders.push(`${tool.name}.${kind}: nested $schema at ${path}`);
+          }
+
+          walkSubschemas(obj, path, walk);
+        };
+        walk(schema as Record<string, unknown>, "");
       }
     }
 
