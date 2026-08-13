@@ -141,7 +141,7 @@ pnpm run setup    # create the ./venv the Python sidecar needs
 
 The entrypoint is written as:
 
-```json
+```text
 "args": ["${CLAUDE_PROJECT_DIR:-.}/build/index.js"]
 ```
 
