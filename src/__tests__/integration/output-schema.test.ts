@@ -234,8 +234,10 @@ describe("outputSchema contract (real server over stdio)", () => {
     // keywords, which is ajv's style opinion, not a validity question. And no
     // ajv-formats: no advertised schema uses the `format` KEYWORD (the six
     // `format` occurrences here are tool parameters NAMED "format", i.e. keys of
-    // a `properties` map). If one ever does, ajv fails compilation with
-    // "unknown format" and this test says so — add ajv-formats then.
+    // a `properties` map — not keywords). Note this test would NOT tell you if
+    // one appeared: under strict:false ajv logs `unknown format ... ignored` to
+    // stderr and compiles successfully. So a real `format` would go unvalidated
+    // silently — register ajv-formats when introducing one.
     const { tools } = await client.listTools();
     const failures: string[] = [];
 
