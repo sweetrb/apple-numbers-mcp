@@ -15,6 +15,9 @@
  *   4. every advertised schema declares the JSON Schema 2020-12 dialect and uses
  *      no draft-07-only construct — a client rejects EVERY tool otherwise
  *      (sweetrb/apple-mail-mcp#147)
+ *   5. every advertised schema actually COMPILES under a real 2020-12 validator
+ *      (ajv, the same library the MCP SDK validates with). Declaring the dialect
+ *      is not the same as being valid in it.
  *
  * Needs no .numbers file, so it always runs (including CI). The Python sidecar
  * auto-bootstrap is disabled so the diagnostic round-trip stays fast and offline.
@@ -25,6 +28,19 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { resolve } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import Ajv2020Import from "ajv/dist/2020.js";
+
+// ajv ships CJS: its 2020 entry sets `module.exports = Ajv2020` and *also*
+// `module.exports.default = Ajv2020`. Node's ESM→CJS interop hands us the former,
+// a loader that honours `__esModule` hands us the latter. Accept either rather
+// than betting on one, because the wrong guess is a runtime-only TypeError that
+// typechecking cannot see.
+const Ajv2020 = ((Ajv2020Import as { default?: typeof Ajv2020Import }).default ??
+  Ajv2020Import) as typeof Ajv2020Import;
+
+// ajv must be a DIRECT devDependency: it reaches the tree only transitively via
+// @modelcontextprotocol/sdk, and pnpm's strict node_modules layout makes a
+// transitive package unimportable.
 
 const SERVER = resolve(__dirname, "../../../build/index.js");
 
@@ -200,6 +216,66 @@ describe("outputSchema contract (real server over stdio)", () => {
       `every advertised schema must declare ${EXPECTED} and use no draft-07-only ` +
         `construct — clients reject the whole tool otherwise: ${offenders.join("; ")}`
     ).toEqual([]);
+  });
+
+  it("every advertised schema compiles under a real JSON Schema 2020-12 validator", async () => {
+    // The dialect assertion above checks the *label* we print on the schema; this
+    // one checks the schema is actually valid in that dialect. Both are needed:
+    // a schema can declare 2020-12 and still be structurally broken (a bad `type`,
+    // a malformed `pattern`, a dangling `$ref`), and a client that refuses to
+    // compile it drops the tool just as completely as a wrong `$schema` does.
+    //
+    // ajv is the validator the MCP SDK itself uses, so "compiles here" is the
+    // closest local proxy for "the ecosystem accepts it" — the class of bug the
+    // draft-07 incident (sweetrb/apple-mail-mcp#147) exposed: a thorough suite
+    // that asserted our own behaviour and never our contract with the ecosystem.
+    //
+    // strict:false on purpose — strict mode rejects unknown/benign annotation
+    // keywords, which is ajv's style opinion, not a validity question. And no
+    // ajv-formats: no advertised schema uses the `format` KEYWORD (the six
+    // `format` occurrences here are tool parameters NAMED "format", i.e. keys of
+    // a `properties` map). If one ever does, ajv fails compilation with
+    // "unknown format" and this test says so — add ajv-formats then.
+    const { tools } = await client.listTools();
+    const failures: string[] = [];
+
+    for (const tool of tools) {
+      for (const [kind, schema] of [
+        ["inputSchema", tool.inputSchema],
+        ["outputSchema", tool.outputSchema],
+      ] as const) {
+        if (!schema) continue;
+        // A fresh instance per schema: ajv caches by $id/$ref, so one shared
+        // instance could let a later schema resolve a ref only because an
+        // earlier one happened to define it.
+        const ajv = new Ajv2020({ strict: false });
+        try {
+          ajv.compile(schema as object);
+        } catch (err) {
+          failures.push(`${tool.name}.${kind}: ${(err as Error).message}`);
+        }
+      }
+    }
+
+    expect(
+      failures,
+      `every advertised schema must compile under JSON Schema 2020-12 — a client ` +
+        `that cannot compile it refuses the whole tool: ${failures.join("; ")}`
+    ).toEqual([]);
+  });
+
+  it("the 2020-12 validator itself has teeth (control)", () => {
+    // Guards the test above against passing vacuously — e.g. if the ajv import
+    // resolved to something that isn't a validator, or options silenced every
+    // diagnostic. A schema with a bogus `type` must be rejected.
+    const ajv = new Ajv2020({ strict: false });
+    expect(() =>
+      ajv.compile({
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        properties: { broken: { type: "not-a-json-schema-type" } },
+      })
+    ).toThrow(/schema is invalid/i);
   });
 
   it("diagnostic tools' real output validates against their outputSchema (when reachable)", async () => {
