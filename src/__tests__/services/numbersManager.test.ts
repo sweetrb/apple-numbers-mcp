@@ -26,10 +26,13 @@ vi.mock("../../utils/python.js", () => ({
   checkDependencies: vi.fn(),
 }));
 
-// Mock fs.existsSync
-vi.mock("node:fs", () => ({
-  existsSync: vi.fn(),
-}));
+// Mock fs.existsSync only. The rest of node:fs stays real because the path
+// boundary in utils/exportPath.ts canonicalizes with fs.realpathSync.native —
+// a stubbed-out realpath would make these tests prove nothing about it.
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return { ...actual, existsSync: vi.fn() };
+});
 
 const mockedRunNumbersReader = vi.mocked(pythonUtils.runNumbersReader);
 const mockedCheckDeps = vi.mocked(pythonUtils.checkDependencies);
@@ -626,13 +629,15 @@ describe("NumbersManager", () => {
 
     it("should throw for non-existent input file", () => {
       mockedExistsSync.mockReturnValue(false);
-      expect(() => manager.importFile("/missing.csv", "/out.numbers")).toThrow(
+      expect(() => manager.importFile("/tmp/missing.csv", "/tmp/out.numbers")).toThrow(
         "Input file not found"
       );
     });
 
     it("should reject non-.numbers output path", () => {
-      expect(() => manager.importFile("/data.csv", "/out.xlsx")).toThrow("Not a Numbers file path");
+      expect(() => manager.importFile("/tmp/data.csv", "/tmp/out.xlsx")).toThrow(
+        "Not a Numbers file path"
+      );
     });
   });
 
@@ -700,6 +705,73 @@ describe("NumbersManager", () => {
         "rename-table",
         expect.arrayContaining(["Sales", "--sheet", "Sheet 1", "--table", "Table 1"])
       );
+    });
+  });
+
+  // Regression: until 1.1.19 this server had NO filesystem boundary at all —
+  // export-table, create-spreadsheet and import-csv would write to (or read
+  // from) any absolute path the caller named, including /etc, /Applications
+  // and LaunchAgent directories. utils/exportPath.ts is unit-tested directly;
+  // these assert the manager actually routes each caller-supplied path through
+  // it. (The generic path resolver never checked anything, so a defect here is
+  // invisible to every other test in this file.)
+  describe("path boundary", () => {
+    beforeEach(() => {
+      mockedRunNumbersReader.mockReturnValue({
+        data: {
+          outputPath: "/tmp/out.csv",
+          format: "csv",
+          rowCount: 1,
+          sheetName: "S",
+          tableName: "T",
+        },
+      });
+    });
+
+    it("rejects an export destination outside the allowed roots", () => {
+      expect(() => manager.exportTable("/tmp/test.numbers", "csv", "/etc/cron.d/pwn.csv")).toThrow(
+        /outside the allowed roots/
+      );
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("rejects an export destination under /Library/LaunchAgents", () => {
+      expect(() =>
+        manager.exportTable("/tmp/test.numbers", "csv", "/Library/LaunchAgents/com.evil.plist")
+      ).toThrow(/outside the allowed roots/);
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("allows an export destination under /tmp", () => {
+      expect(() => manager.exportTable("/tmp/test.numbers", "csv", "/tmp/out.csv")).not.toThrow();
+      expect(mockedRunNumbersReader).toHaveBeenCalled();
+    });
+
+    it("rejects a new-spreadsheet path outside the allowed roots", () => {
+      expect(() => manager.createSpreadsheet("/Applications/pwn.numbers", ["A"])).toThrow(
+        /outside the allowed roots/
+      );
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("rejects an import SOURCE outside the allowed roots", () => {
+      expect(() => manager.importFile("/etc/passwd", "/tmp/out.numbers")).toThrow(
+        /outside the allowed roots/
+      );
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("rejects an import OUTPUT outside the allowed roots", () => {
+      expect(() => manager.importFile("/tmp/data.csv", "/etc/pwn.numbers")).toThrow(
+        /outside the allowed roots/
+      );
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("rejects a sibling directory that merely shares an allowed root's prefix", () => {
+      expect(() =>
+        manager.exportTable("/tmp/test.numbers", "csv", "/Volumes-evil/out.csv")
+      ).toThrow(/outside the allowed roots/);
     });
   });
 });

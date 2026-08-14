@@ -37,6 +37,7 @@ import type {
 import { existsSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { homedir } from "node:os";
+import { resolveWithinAllowedRoots } from "../utils/exportPath.js";
 
 export class NumbersManager {
   private validatePath(filePath: string): string {
@@ -55,11 +56,13 @@ export class NumbersManager {
 
   /**
    * Resolve and validate an output path for new files.
-   * Expands ~ and checks .numbers extension, but does NOT require the file to exist.
+   * Expands ~, enforces the allowed-roots boundary, and checks the .numbers
+   * extension, but does NOT require the file to exist. The extension is checked
+   * on the CANONICAL path so a symlink can't present a .numbers name for a
+   * target that is something else entirely.
    */
   private validateOutputPath(filePath: string): string {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    const resolved = resolve(expanded);
+    const resolved = resolveWithinAllowedRoots(filePath, "Output path");
     if (extname(resolved).toLowerCase() !== ".numbers") {
       throw new Error(`Not a Numbers file path: ${resolved}. Expected .numbers extension.`);
     }
@@ -67,11 +70,21 @@ export class NumbersManager {
   }
 
   /**
-   * Resolve a generic path (expand ~ and resolve).
+   * Resolve a path that will be WRITTEN (export destinations), enforcing the
+   * allowed-roots boundary. Symlinks are resolved before the check, so a link
+   * inside an allowed directory cannot escape to a system location.
    */
-  private resolvePath(filePath: string): string {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    return resolve(expanded);
+  private resolveWritePath(filePath: string): string {
+    return resolveWithinAllowedRoots(filePath, "Output path");
+  }
+
+  /**
+   * Resolve a path that will be READ (import sources), enforcing the same
+   * allowed-roots boundary so this server can't be turned into an arbitrary
+   * local-file reader.
+   */
+  private resolveReadPath(filePath: string): string {
+    return resolveWithinAllowedRoots(filePath, "Input path");
   }
 
   /**
@@ -136,7 +149,7 @@ export class NumbersManager {
     table?: string
   ): ExportResult {
     const resolved = this.validatePath(filePath);
-    const outputResolved = this.resolvePath(outputPath);
+    const outputResolved = this.resolveWritePath(outputPath);
     const args = [resolved, format, outputResolved];
     if (sheet) args.push("--sheet", sheet);
     if (table) args.push("--table", table);
@@ -306,7 +319,7 @@ export class NumbersManager {
     outputPath: string,
     options?: { format?: "auto" | "csv" | "tsv" | "json"; sheetName?: string; tableName?: string }
   ): ImportResult {
-    const inputResolved = this.resolvePath(inputPath);
+    const inputResolved = this.resolveReadPath(inputPath);
     if (!existsSync(inputResolved)) {
       throw new Error(`Input file not found: ${inputResolved}`);
     }
