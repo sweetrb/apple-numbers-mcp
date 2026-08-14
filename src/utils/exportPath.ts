@@ -18,12 +18,23 @@
  *
  * @module utils/exportPath
  */
-import { existsSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 /** Roots under which these tools are permitted to read and write. */
-export const ALLOWED_EXPORT_ROOTS = [homedir(), "/tmp", "/private/tmp", "/Volumes"];
+export const ALLOWED_EXPORT_ROOTS = [
+  homedir(),
+  // os.tmpdir() is the canonical per-user temp dir on macOS (/var/folders/<hash>/T,
+  // real path /private/var/folders/...). It is what Node's os.tmpdir(), Python's
+  // tempfile and $TMPDIR all return — and what this repo's own fixtures use — so
+  // omitting it refuses the most ordinary scratch destination there is.
+  tmpdir(),
+  "/private/var/folders",
+  "/tmp",
+  "/private/tmp",
+  "/Volumes",
+];
 
 /** Human-readable rendering of the allowed roots for error messages. */
 export const ALLOWED_EXPORT_ROOTS_TEXT = "your home directory, /tmp, /private/tmp, or /Volumes";
@@ -102,10 +113,33 @@ export function expandTilde(p: string): string {
  * a symlink under an allowed root pointing outside it (e.g. /tmp/link -> /etc),
  * and also canonicalizes macOS's /tmp -> /private/tmp.
  */
-export function canonicalizeCandidate(p: string): string {
+/**
+ * True if the path itself is present, WITHOUT following a final symlink.
+ *
+ * `existsSync` follows links, so it answers "false" for a dangling symlink —
+ * which would let the walk-up below treat that link as a not-yet-created tail
+ * component, re-append it verbatim, and never canonicalize it. The sidecar then
+ * follows the link and writes outside the allowed roots. `lstat` sees the link
+ * itself. Only ENOENT/ENOTDIR mean genuinely absent; any other error (EACCES on
+ * a non-traversable parent) is treated as PRESENT so the walk stops there and
+ * the boundary check runs against something real rather than walking past it.
+ */
+function entryPresent(p: string): boolean {
+  try {
+    lstatSync(p);
+    return true;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    return !(code === "ENOENT" || code === "ENOTDIR");
+  }
+}
+
+export function canonicalizeCandidate(p: string, depth = 0): string {
+  // Symlink chains are bounded so a cycle cannot spin here.
+  if (depth > 32) throw new Error(`Too many symbolic links resolving "${p}"`);
   let existing = p;
   const tail: string[] = [];
-  while (!existsSync(existing)) {
+  while (!entryPresent(existing)) {
     const parent = dirname(existing);
     if (parent === existing) break; // reached the filesystem root
     tail.unshift(basename(existing));
@@ -115,9 +149,31 @@ export function canonicalizeCandidate(p: string): string {
   try {
     real = canonicalize(existing);
   } catch {
+    // `existing` is present per lstat but will not canonicalize. The usual cause
+    // is a DANGLING symlink: realpath throws ENOENT because the target does not
+    // exist YET — but a write through this path creates exactly that target, so
+    // falling back to the raw path here would hand the boundary check a location
+    // the write is not going to touch. Resolve the link by hand against its
+    // parent's real path and re-run, so the check sees where bytes actually land.
+    const viaLink = resolveDanglingLink(existing, depth);
+    if (viaLink !== null) {
+      return canonicalizeCandidate(tail.length ? join(viaLink, ...tail) : viaLink, depth + 1);
+    }
     real = existing;
   }
   return tail.length ? join(real, ...tail) : real;
+}
+
+/** The target of a symlink that realpath refused, or null if it is not a link. */
+function resolveDanglingLink(p: string, depth: number): string | null {
+  try {
+    if (!lstatSync(p).isSymbolicLink()) return null;
+    const target = readlinkSync(p);
+    if (isAbsolute(target)) return target;
+    return resolve(canonicalizeCandidate(dirname(p), depth + 1), target);
+  } catch {
+    return null;
+  }
 }
 
 /**

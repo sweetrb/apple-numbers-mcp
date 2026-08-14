@@ -21817,10 +21817,21 @@ import { resolve as resolve2, extname } from "node:path";
 import { homedir as homedir2 } from "node:os";
 
 // src/utils/exportPath.ts
-import { existsSync as existsSync2, realpathSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, dirname as dirname2, join as join2, resolve, sep } from "node:path";
-var ALLOWED_EXPORT_ROOTS = [homedir(), "/tmp", "/private/tmp", "/Volumes"];
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname as dirname2, isAbsolute, join as join2, resolve, sep } from "node:path";
+var ALLOWED_EXPORT_ROOTS = [
+  homedir(),
+  // os.tmpdir() is the canonical per-user temp dir on macOS (/var/folders/<hash>/T,
+  // real path /private/var/folders/...). It is what Node's os.tmpdir(), Python's
+  // tempfile and $TMPDIR all return — and what this repo's own fixtures use — so
+  // omitting it refuses the most ordinary scratch destination there is.
+  tmpdir(),
+  "/private/var/folders",
+  "/tmp",
+  "/private/tmp",
+  "/Volumes"
+];
 var ALLOWED_EXPORT_ROOTS_TEXT = "your home directory, /tmp, /private/tmp, or /Volumes";
 function canonicalize(path) {
   return realpathSync.native(path);
@@ -21848,10 +21859,20 @@ function expandTilde(p) {
   if (p.startsWith(`~${sep}`) || p.startsWith("~/")) return join2(homedir(), p.slice(2));
   return p;
 }
-function canonicalizeCandidate(p) {
+function entryPresent(p) {
+  try {
+    lstatSync(p);
+    return true;
+  } catch (e) {
+    const code = e.code;
+    return !(code === "ENOENT" || code === "ENOTDIR");
+  }
+}
+function canonicalizeCandidate(p, depth = 0) {
+  if (depth > 32) throw new Error(`Too many symbolic links resolving "${p}"`);
   let existing = p;
   const tail = [];
-  while (!existsSync2(existing)) {
+  while (!entryPresent(existing)) {
     const parent = dirname2(existing);
     if (parent === existing) break;
     tail.unshift(basename(existing));
@@ -21861,9 +21882,23 @@ function canonicalizeCandidate(p) {
   try {
     real = canonicalize(existing);
   } catch {
+    const viaLink = resolveDanglingLink(existing, depth);
+    if (viaLink !== null) {
+      return canonicalizeCandidate(tail.length ? join2(viaLink, ...tail) : viaLink, depth + 1);
+    }
     real = existing;
   }
   return tail.length ? join2(real, ...tail) : real;
+}
+function resolveDanglingLink(p, depth) {
+  try {
+    if (!lstatSync(p).isSymbolicLink()) return null;
+    const target = readlinkSync(p);
+    if (isAbsolute(target)) return target;
+    return resolve(canonicalizeCandidate(dirname2(p), depth + 1), target);
+  } catch {
+    return null;
+  }
 }
 function resolveWithinAllowedRoots(path, label) {
   const resolved = canonicalizeCandidate(resolve(expandTilde(path)));

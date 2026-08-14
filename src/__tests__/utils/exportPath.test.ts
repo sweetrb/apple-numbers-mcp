@@ -9,15 +9,15 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
-  mkdtempSync,
+  existsSync,
   mkdirSync,
+  mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
-  existsSync,
-  realpathSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import {
   ALLOWED_EXPORT_ROOTS,
@@ -45,7 +45,14 @@ afterAll(() => {
 
 describe("exportPath allowlist", () => {
   it("names the roots it enforces", () => {
-    expect(ALLOWED_EXPORT_ROOTS).toEqual([homedir(), "/tmp", "/private/tmp", "/Volumes"]);
+    expect(ALLOWED_EXPORT_ROOTS).toEqual([
+      homedir(),
+      tmpdir(),
+      "/private/var/folders",
+      "/tmp",
+      "/private/tmp",
+      "/Volumes",
+    ]);
     expect(ALLOWED_EXPORT_ROOTS_TEXT).toContain("/Volumes");
   });
 
@@ -189,5 +196,41 @@ describe("helpers", () => {
   it("canonicalizeCandidate re-appends the not-yet-created remainder", () => {
     const p = join(tmpRoot, "a", "b", "c.csv");
     expect(canonicalizeCandidate(p)).toBe(join(realpathSync.native(tmpRoot), "a", "b", "c.csv"));
+  });
+});
+
+describe("dangling symlinks and the segment boundary (adversarial round 2)", () => {
+  it("refuses a DANGLING symlink that points outside the allowed roots", () => {
+    // existsSync FOLLOWS links, so a broken link reads as "does not exist" and the
+    // walk-up would treat it as a not-yet-created tail component, re-append it
+    // verbatim, and never canonicalize it — the sidecar then follows it on write.
+    const dir = mkdtempSync(join(homedir(), ".np-dangling-"));
+    try {
+      const link = join(dir, "gone");
+      symlinkSync("/private/var/tmp/np-does-not-exist-yet", link);
+      expect(() => resolveWithinAllowedRoots(join(link, "out.csv"), "Output path")).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a sibling directory whose name merely shares a root's prefix", () => {
+    // The boundary must compare path SEGMENTS. A bare startsWith would admit all
+    // of these while every other test in this file stayed green.
+    for (const p of [
+      "/Volumes-evil/out.csv",
+      "/private/tmp-evil/out.csv",
+      "/private/var/folders-evil/out.csv",
+      `${homedir()}other/out.csv`,
+    ]) {
+      expect(() => resolveWithinAllowedRoots(p, "Output path")).toThrow(/outside/i);
+    }
+  });
+
+  it("still accepts the canonical macOS temp dir that os.tmpdir() returns", () => {
+    // $TMPDIR is /var/folders/<hash>/T — the most ordinary scratch destination
+    // there is, and what this repo's own fixtures use.
+    const f = join(tmpdir(), "np-ok.csv");
+    expect(() => resolveWithinAllowedRoots(f, "Output path")).not.toThrow();
   });
 });
