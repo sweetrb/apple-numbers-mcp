@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [1.1.19] - 2026-08-14
+
+### Security
+
+- **`export-table`, `create-spreadsheet` and `import-csv` would read and write ANY absolute path the caller named — this server had no filesystem boundary at all.** It was the outlier of the four Apple MCP servers; mail, notes and photos each have one. `resolvePath()` expanded `~` and called `resolve()` and did nothing else, and `validateOutputPath()` checked only for a `.numbers` extension, so an `outputPath` of `/Library/LaunchAgents/com.evil.plist`, `/etc/cron.d/x`, or a path inside an app bundle was written unconditionally, and `import-csv`'s `inputPath` could read any file on disk. Those paths reach the tools from the model, so a prompt-injected or simply confused agent had a write-anywhere primitive. All three now resolve through a new allowlist (`src/utils/exportPath.ts`, mirroring apple-photos-mcp's module of the same name): the path must resolve — after `~` expansion **and symlink resolution** — to a location under the **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`, and anything else is rejected with an error naming the resolved path and those roots. Symlinks are resolved before the check even when the target does not exist yet (the deepest existing ancestor is canonicalized and the not-yet-created remainder re-appended), so a link under `/tmp` pointing at `/etc` is refused; and the `.numbers` extension check now runs on the **canonical** path, so a symlink cannot present a `.numbers` name for something that isn't one. Two details are copied deliberately from apple-mail-mcp's implementation: canonicalization uses `fs.realpathSync.`**`native`** rather than the JS emulation — which resolves symlinks but preserves the caller's casing, so on case-insensitive APFS one spelling of a path compares differently from another spelling of the same file — and membership is a path-**segment** test (`candidate === root || candidate.startsWith(root + sep)`) rather than a bare `startsWith`, so `/Volumes-evil` and `<home>-evil` cannot ride in on a shared prefix. **Overwrite semantics are unchanged**: within the allowed roots an existing file at the target path is still overwritten, as all three tools have always documented — the path is caller-supplied rather than attacker-named, so this adds the root boundary only. The guard was verified by breaking it three ways and watching the new tests fail: removing the check fails 21 of 67, swapping the native realpath for the JS one fails 1, and replacing the segment test with a bare `startsWith` fails 5. Verified against the real numbers-parser sidecar as well as in unit tests — a real CSV imports and a real `.numbers` table exports under `/tmp`, an export re-run over an existing file still overwrites it, and writes to `/etc`, `/Applications` and a `/tmp` symlink pointing at `/private/etc` are all refused with nothing created.
+
+- The boundary resolves a **dangling** symlink rather than walking past it. `existsSync`
+  follows links, so a broken link read as "not created yet", was re-appended verbatim and
+  never canonicalized — and the sidecar then followed it on write. Presence is now tested
+  with `lstat`, and a link whose target does not exist yet is resolved by hand so the check
+  runs against the location the write would actually create.
+- `os.tmpdir()` (`/var/folders/<hash>/T`) is an allowed root. It is what Node, Python's
+  `tempfile` and `$TMPDIR` all return on macOS — and what this repo's own fixtures use — so
+  omitting it refused the most ordinary scratch destination there is.
+
 ## [1.1.18] - 2026-08-13
 
 ### Documentation

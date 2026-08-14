@@ -65,6 +65,17 @@ failure), `numbers_parser` (read/write sidecar present), `numbers_app`
 - **`path` is a file path with `~` expansion.** Every tool takes an explicit
   `path` (the `.numbers` file). A leading `~` is expanded to the home directory, so
   `~/Documents/budget.numbers` works. Files must end in `.numbers`.
+- **File paths are bounded to the user's own space.** The tools that read or
+  write ordinary files — `export-table` (`outputPath`), `create-spreadsheet`
+  (`path`) and `import-csv` (`inputPath` + `outputPath`) — require the path to
+  resolve, after `~` expansion **and symlink resolution**, to a location under
+  the **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`. Anything else
+  (`/etc`, `/Library`, an app bundle, a LaunchAgents directory, or a symlink
+  under `/tmp` pointing at one) is rejected with an error naming those roots.
+  There is no override setting — pick a destination under one of them rather
+  than retrying. Overwrite behaviour is unchanged: within the allowed roots an
+  existing file at the target path is still overwritten, so confirm the
+  destination.
 - **Sheet/table default to the first.** Most read and value-write tools accept
   optional `sheet` / `table`; omit them to target the **first sheet** and **first
   table**. The AppleScript tools (`set-formula`, `set-cell-style`, dimensions,
@@ -156,6 +167,7 @@ errors.
 | Numbers can't be found / isn't running | Numbers.app not installed (formula/format tools only — they launch it themselves, so it needn't already be running) | Install Numbers.app, then retry; reads and value/structure writes work without it |
 | "File not found" | Wrong path, or `~` not expanded by the caller | Check the path; ensure it ends in `.numbers` |
 | "Sheet not found" / "Table not found" | Sheet/table name doesn't match | Call `get-file-info` first to get exact names; omit `sheet`/`table` to use the first |
+| "Output path … is outside the allowed roots" / "Input path … is outside the allowed roots" | `export-table` / `create-spreadsheet` / `import-csv` was given a path outside home, `/tmp`, `/private/tmp`, `/Volumes` (symlinks are resolved first) | Choose a path under one of those roots; the error reports the RESOLVED path, which shows where a symlink actually led |
 
 ## Quick reference: getting the most from a request
 

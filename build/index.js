@@ -2985,7 +2985,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3012,7 +3012,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3643,7 +3643,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const { parsed: baseParsed, malformedAuthorityOrPort: baseMalformed } = parseWithStatus(baseURI, schemelessOptions);
       const { parsed: relativeParsed, malformedAuthorityOrPort: relativeMalformed } = parseWithStatus(relativeURI, schemelessOptions);
@@ -3927,7 +3927,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -19023,7 +19023,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19040,7 +19040,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19118,7 +19118,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19379,12 +19379,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20697,7 +20697,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21385,12 +21385,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json2 = serializeMessage(message);
       if (this._stdout.write(json2)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -21399,7 +21399,7 @@ var StdioServerTransport = class {
 // src/index.ts
 import { readFileSync as readFileSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname2, join as join3 } from "node:path";
+import { dirname as dirname3, join as join4 } from "node:path";
 
 // src/utils/python.ts
 import { execSync, execFileSync } from "node:child_process";
@@ -21812,14 +21812,110 @@ function unmergeCells(filePath, sheet, table, startRow, startCol, endRow, endCol
 }
 
 // src/services/numbersManager.ts
-import { existsSync as existsSync2 } from "node:fs";
-import { resolve, extname } from "node:path";
-import { homedir } from "node:os";
+import { existsSync as existsSync3 } from "node:fs";
+import { resolve as resolve2, extname } from "node:path";
+import { homedir as homedir2 } from "node:os";
+
+// src/utils/exportPath.ts
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname as dirname2, isAbsolute, join as join2, resolve, sep } from "node:path";
+var ALLOWED_EXPORT_ROOTS = [
+  homedir(),
+  // os.tmpdir() is the canonical per-user temp dir on macOS (/var/folders/<hash>/T,
+  // real path /private/var/folders/...). It is what Node's os.tmpdir(), Python's
+  // tempfile and $TMPDIR all return — and what this repo's own fixtures use — so
+  // omitting it refuses the most ordinary scratch destination there is.
+  tmpdir(),
+  "/private/var/folders",
+  "/tmp",
+  "/private/tmp",
+  "/Volumes"
+];
+var ALLOWED_EXPORT_ROOTS_TEXT = "your home directory, /tmp, /private/tmp, or /Volumes";
+function canonicalize(path) {
+  return realpathSync.native(path);
+}
+function allowedRoots() {
+  const roots = [];
+  for (const root of ALLOWED_EXPORT_ROOTS) {
+    if (!roots.includes(root)) roots.push(root);
+    try {
+      const canonical = canonicalize(root);
+      if (!roots.includes(canonical)) roots.push(canonical);
+    } catch {
+    }
+  }
+  return roots;
+}
+function isPathWithinAllowedRoots(resolvedPath) {
+  return allowedRoots().some((root) => {
+    const base = root.endsWith(sep) ? root.slice(0, -1) : root;
+    return resolvedPath === base || resolvedPath.startsWith(base + sep);
+  });
+}
+function expandTilde(p) {
+  if (p === "~") return homedir();
+  if (p.startsWith(`~${sep}`) || p.startsWith("~/")) return join2(homedir(), p.slice(2));
+  return p;
+}
+function entryPresent(p) {
+  try {
+    lstatSync(p);
+    return true;
+  } catch (e) {
+    const code = e.code;
+    return !(code === "ENOENT" || code === "ENOTDIR");
+  }
+}
+function canonicalizeCandidate(p, depth = 0) {
+  if (depth > 32) throw new Error(`Too many symbolic links resolving "${p}"`);
+  let existing = p;
+  const tail = [];
+  while (!entryPresent(existing)) {
+    const parent = dirname2(existing);
+    if (parent === existing) break;
+    tail.unshift(basename(existing));
+    existing = parent;
+  }
+  let real;
+  try {
+    real = canonicalize(existing);
+  } catch {
+    const viaLink = resolveDanglingLink(existing, depth);
+    if (viaLink !== null) {
+      return canonicalizeCandidate(tail.length ? join2(viaLink, ...tail) : viaLink, depth + 1);
+    }
+    real = existing;
+  }
+  return tail.length ? join2(real, ...tail) : real;
+}
+function resolveDanglingLink(p, depth) {
+  try {
+    if (!lstatSync(p).isSymbolicLink()) return null;
+    const target = readlinkSync(p);
+    if (isAbsolute(target)) return target;
+    return resolve(canonicalizeCandidate(dirname2(p), depth + 1), target);
+  } catch {
+    return null;
+  }
+}
+function resolveWithinAllowedRoots(path, label) {
+  const resolved = canonicalizeCandidate(resolve(expandTilde(path)));
+  if (!isPathWithinAllowedRoots(resolved)) {
+    throw new Error(
+      `${label} "${path}" resolves to "${resolved}", which is outside the allowed roots (${ALLOWED_EXPORT_ROOTS_TEXT}). Choose a path under one of those roots.`
+    );
+  }
+  return resolved;
+}
+
+// src/services/numbersManager.ts
 var NumbersManager = class {
   validatePath(filePath) {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    const resolved = resolve(expanded);
-    if (!existsSync2(resolved)) {
+    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir2()) : filePath;
+    const resolved = resolve2(expanded);
+    if (!existsSync3(resolved)) {
       throw new Error(`File not found: ${resolved}`);
     }
     if (extname(resolved).toLowerCase() !== ".numbers") {
@@ -21829,22 +21925,33 @@ var NumbersManager = class {
   }
   /**
    * Resolve and validate an output path for new files.
-   * Expands ~ and checks .numbers extension, but does NOT require the file to exist.
+   * Expands ~, enforces the allowed-roots boundary, and checks the .numbers
+   * extension, but does NOT require the file to exist. The extension is checked
+   * on the CANONICAL path so a symlink can't present a .numbers name for a
+   * target that is something else entirely.
    */
   validateOutputPath(filePath) {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    const resolved = resolve(expanded);
+    const resolved = resolveWithinAllowedRoots(filePath, "Output path");
     if (extname(resolved).toLowerCase() !== ".numbers") {
       throw new Error(`Not a Numbers file path: ${resolved}. Expected .numbers extension.`);
     }
     return resolved;
   }
   /**
-   * Resolve a generic path (expand ~ and resolve).
+   * Resolve a path that will be WRITTEN (export destinations), enforcing the
+   * allowed-roots boundary. Symlinks are resolved before the check, so a link
+   * inside an allowed directory cannot escape to a system location.
    */
-  resolvePath(filePath) {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    return resolve(expanded);
+  resolveWritePath(filePath) {
+    return resolveWithinAllowedRoots(filePath, "Output path");
+  }
+  /**
+   * Resolve a path that will be READ (import sources), enforcing the same
+   * allowed-roots boundary so this server can't be turned into an arbitrary
+   * local-file reader.
+   */
+  resolveReadPath(filePath) {
+    return resolveWithinAllowedRoots(filePath, "Input path");
   }
   /**
    * Get file structure: sheets, tables, dimensions, headers.
@@ -21886,7 +21993,7 @@ var NumbersManager = class {
    */
   exportTable(filePath, format, outputPath, sheet, table) {
     const resolved = this.validatePath(filePath);
-    const outputResolved = this.resolvePath(outputPath);
+    const outputResolved = this.resolveWritePath(outputPath);
     const args = [resolved, format, outputResolved];
     if (sheet) args.push("--sheet", sheet);
     if (table) args.push("--table", table);
@@ -22000,8 +22107,8 @@ var NumbersManager = class {
    * Import a CSV/TSV/JSON file into a new .numbers file.
    */
   importFile(inputPath, outputPath, options) {
-    const inputResolved = this.resolvePath(inputPath);
-    if (!existsSync2(inputResolved)) {
+    const inputResolved = this.resolveReadPath(inputPath);
+    if (!existsSync3(inputResolved)) {
       throw new Error(`Input file not found: ${inputResolved}`);
     }
     const outputResolved = this.validateOutputPath(outputPath);
@@ -22139,7 +22246,7 @@ function withErrorHandling(handler, prefix) {
 
 // src/tools/doctor.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync3 } from "node:fs";
+import { existsSync as existsSync4 } from "node:fs";
 var NUMBERS_APP_PATHS = [
   "/Applications/Numbers.app",
   "/System/Applications/Numbers.app",
@@ -22148,7 +22255,7 @@ var NUMBERS_APP_PATHS = [
 ];
 var NUMBERS_BUNDLE_IDS = ["com.apple.Numbers", "com.apple.iWork.Numbers"];
 function findNumbersApp() {
-  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync3(p));
+  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync4(p));
   if (byPath) return byPath;
   for (const id of NUMBERS_BUNDLE_IDS) {
     try {
@@ -22158,7 +22265,7 @@ function findNumbersApp() {
         { encoding: "utf8", timeout: 5e3, stdio: ["ignore", "pipe", "ignore"] }
       ).trim();
       const path = out.endsWith("/") ? out.slice(0, -1) : out;
-      if (path && existsSync3(path)) return path;
+      if (path && existsSync4(path)) return path;
     } catch {
     }
   }
@@ -22335,18 +22442,18 @@ First use get-file-info and read-table to read the relevant table(s) so you know
 }
 
 // src/services/fileConfig.ts
-import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
-import { join as join2 } from "node:path";
-import { homedir as homedir2 } from "node:os";
+import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
+import { join as join3 } from "node:path";
+import { homedir as homedir3 } from "node:os";
 function fileConfigPath(env = process.env) {
   const override = env.APPLE_NUMBERS_MCP_CONFIG_FILE;
   if (override && override.trim()) return override.trim();
-  return join2(homedir2(), "Library", "Application Support", "apple-numbers-mcp", "config.json");
+  return join3(homedir3(), "Library", "Application Support", "apple-numbers-mcp", "config.json");
 }
 function loadFileConfig(env = process.env, path = fileConfigPath(env)) {
   const applied = [];
   try {
-    if (!existsSync4(path)) return applied;
+    if (!existsSync5(path)) return applied;
     const parsed = JSON.parse(readFileSync2(path, "utf8"));
     if (!parsed || typeof parsed !== "object") return applied;
     for (const [k, v] of Object.entries(parsed)) {
@@ -22476,8 +22583,8 @@ function withJsonSchema2020_12(transport) {
 // src/index.ts
 loadFileConfig();
 var __filename2 = fileURLToPath2(import.meta.url);
-var __dirname2 = dirname2(__filename2);
-var pkg = JSON.parse(readFileSync3(join3(__dirname2, "..", "package.json"), "utf-8"));
+var __dirname2 = dirname3(__filename2);
+var pkg = JSON.parse(readFileSync3(join4(__dirname2, "..", "package.json"), "utf-8"));
 var version2 = pkg.version;
 var manager = new NumbersManager();
 var MAX_INDEX = 1e6;
@@ -22661,7 +22768,7 @@ ${lines.join("\n")}`, {
 registerTool(
   "export-table",
   {
-    description: "Use when: you want to write a table's data out to a CSV, TSV, or JSON file on disk. Defaults to the first sheet and first table if sheet/table are omitted.\nReturns: the exported row count, format, and output path.\nDo not use when: you want the data inline in the response rather than a file \u2014 use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source \u2014 use import-csv.\nSafety: writes a file to disk at outputPath. The path is written unconditionally \u2014 any existing file there is OVERWRITTEN \u2014 so confirm the destination before calling.",
+    description: "Use when: you want to write a table's data out to a CSV, TSV, or JSON file on disk. Defaults to the first sheet and first table if sheet/table are omitted.\nReturns: the exported row count, format, and output path.\nDo not use when: you want the data inline in the response rather than a file \u2014 use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source \u2014 use import-csv.\nSafety: writes a file to disk at outputPath. The path is written unconditionally \u2014 any existing file there is OVERWRITTEN \u2014 so confirm the destination before calling. outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a path under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
     inputSchema: {
       path: external_exports.string().describe("Path to the .numbers file"),
       format: external_exports.enum(["csv", "tsv", "json"]).describe("Output format"),
@@ -22725,7 +22832,7 @@ Merged: yes`;
 registerTool(
   "create-spreadsheet",
   {
-    description: "Use when: you want to create a brand-new .numbers file with a single sheet and table from a list of headers, optionally with initial data rows.\nReturns: the file path, sheet name, table name, header count, and data-row count.\nDo not use when: you want to build the file from an existing CSV/TSV/JSON source \u2014 use import-csv; or you want to add to a file that already exists \u2014 use add-sheet / add-table / add-rows.\nSafety: writes a .numbers file via the numbers-parser sidecar (does not require Numbers.app). The target path is written unconditionally \u2014 if a file already exists at that path it is OVERWRITTEN in place; choose a fresh path or confirm overwrite first.",
+    description: "Use when: you want to create a brand-new .numbers file with a single sheet and table from a list of headers, optionally with initial data rows.\nReturns: the file path, sheet name, table name, header count, and data-row count.\nDo not use when: you want to build the file from an existing CSV/TSV/JSON source \u2014 use import-csv; or you want to add to a file that already exists \u2014 use add-sheet / add-table / add-rows.\nSafety: writes a .numbers file via the numbers-parser sidecar (does not require Numbers.app). The target path is written unconditionally \u2014 if a file already exists at that path it is OVERWRITTEN in place; choose a fresh path or confirm overwrite first. path must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a location under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
     inputSchema: {
       path: external_exports.string().describe("Path for the new .numbers file"),
       headers: external_exports.array(headerCellSchema).min(1).max(MAX_BATCH).describe("Column header names"),
@@ -22931,7 +23038,7 @@ registerTool(
 registerTool(
   "import-csv",
   {
-    description: 'Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly; any unrecognized extension falls back to CSV. CSV/TSV fields are auto-typed (numbers, booleans, empty cells), so zero-padded identifiers LOSE their leading zeros \u2014 "01234" becomes 1234. JSON values are passed through untouched, but an array of objects takes its column set from the FIRST object only, silently dropping keys that appear later.\nReturns: the imported row and column counts, detected format, and the input/output paths plus sheet/table names.\nDo not use when: building a file from headers/rows you already have in hand \u2014 use create-spreadsheet; or exporting a .numbers table out to CSV/TSV/JSON \u2014 use export-table.\nSafety: writes the output .numbers file via the numbers-parser sidecar (does not require Numbers.app). The output path is written unconditionally \u2014 if a file already exists there it is OVERWRITTEN in place; choose a fresh output path or confirm overwrite first.',
+    description: 'Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly; any unrecognized extension falls back to CSV. CSV/TSV fields are auto-typed (numbers, booleans, empty cells), so zero-padded identifiers LOSE their leading zeros \u2014 "01234" becomes 1234. JSON values are passed through untouched, but an array of objects takes its column set from the FIRST object only, silently dropping keys that appear later.\nReturns: the imported row and column counts, detected format, and the input/output paths plus sheet/table names.\nDo not use when: building a file from headers/rows you already have in hand \u2014 use create-spreadsheet; or exporting a .numbers table out to CSV/TSV/JSON \u2014 use export-table.\nSafety: writes the output .numbers file via the numbers-parser sidecar (does not require Numbers.app). The output path is written unconditionally \u2014 if a file already exists there it is OVERWRITTEN in place; choose a fresh output path or confirm overwrite first. Both inputPath and outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to locations under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.',
     inputSchema: {
       inputPath: external_exports.string().describe("Path to the CSV/TSV/JSON input file"),
       outputPath: external_exports.string().describe("Path for the output .numbers file"),

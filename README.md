@@ -303,7 +303,7 @@ Case-insensitive partial match across every cell in a `.numbers` file.
 
 Export a table to CSV, TSV, or JSON.
 
-**⚠️ Safety:** Writes a file to disk at `outputPath`. The path is written unconditionally — any existing file there is **overwritten** — so confirm the destination before calling.
+**⚠️ Safety:** Writes a file to disk at `outputPath`. The path is written unconditionally — any existing file there is **overwritten** — so confirm the destination before calling. Paths are bounded: `outputPath` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -321,7 +321,7 @@ Export a table to CSV, TSV, or JSON.
 
 Create a new `.numbers` file with one sheet and table.
 
-**⚠️ Safety:** Overwrites the file at `path` if it already exists — confirm the destination first.
+**⚠️ Safety:** Overwrites the file at `path` if it already exists — confirm the destination first. Paths are bounded: `path` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -573,7 +573,7 @@ Merge a rectangular range of cells, or undo a merge.
 
 Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet. Auto-detects format from extension, or pass `format` explicitly.
 
-**⚠️ Safety:** Overwrites the file at `outputPath` if it already exists — confirm the destination first.
+**⚠️ Safety:** Overwrites the file at `outputPath` if it already exists — confirm the destination first. Paths are bounded: both `inputPath` and `outputPath` must resolve — after `~` expansion and symlink resolution — to locations under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -773,6 +773,11 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 ### "File not found"
 - Check the path; expand `~` if your shell isn't doing it.
 - Ensure the file extension is `.numbers`.
+
+### "Output path … is outside the allowed roots" / "Input path … is outside the allowed roots"
+- `export-table`, `create-spreadsheet` and `import-csv` read and write ordinary files, so their paths are restricted to your **home directory**, `/tmp`, `/private/tmp`, and `/Volumes` — the server will not write into `/etc`, `/Library`, an app bundle, or any other system location, and will not read a source file from one.
+- Symlinks are resolved **before** the check, so a link inside an allowed directory that points outside it is rejected too; the error reports the resolved path, which is usually the quickest way to see where a path really went.
+- Fix: choose a path under one of those roots (`~/Documents/report.csv`, `/tmp/report.csv`). There is no override setting.
 
 ### Formatting / formula tools fail with "Numbers.app not running" or "Not authorized to send Apple events to Numbers"
 - Open Numbers.app at least once. macOS will prompt for automation permission — accept it.
