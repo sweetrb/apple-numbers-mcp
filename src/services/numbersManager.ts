@@ -40,10 +40,32 @@ import { homedir } from "node:os";
 import { resolveWithinAllowedRoots } from "../utils/exportPath.js";
 
 export class NumbersManager {
+  /**
+   * Resolve and validate the path of an EXISTING `.numbers` file.
+   *
+   * This is the resolver behind `get-file-info`, `read-table`, `search` and
+   * every in-place write (`set-cell`, `add-rows`, `set-formula`, …). It used to
+   * expand `~`, `resolve()` and check the extension — and nothing else — so
+   * those tools could read and modify a `.numbers` file **anywhere on disk**,
+   * while its sibling `validateOutputPath` had enforced the allowed-roots
+   * boundary since 1.1.19. That asymmetry was the largest remaining gap here.
+   *
+   * It now goes through the same `resolveWithinAllowedRoots` as the write side,
+   * which also brings the hardening that came with it: canonicalization via
+   * `realpathSync.native` (so a case-respelled segment cannot defeat the check
+   * on case-insensitive APFS) and symlink resolution BEFORE the comparison (so
+   * a link inside an allowed directory cannot point out of it).
+   *
+   * The extension is checked on the CANONICAL path for the same reason it is on
+   * the output side: a symlink must not be able to present a `.numbers` name
+   * for a target that is something else entirely.
+   *
+   * The built-in roots cover home, the temp dirs and `/Volumes`, so a file the
+   * user could plausibly want to open is almost always already inside them.
+   * `APPLE_NUMBERS_MCP_EXTRA_ROOTS` exists for the layouts they are not.
+   */
   private validatePath(filePath: string): string {
-    // Expand ~ to home directory
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir()) : filePath;
-    const resolved = resolve(expanded);
+    const resolved = resolveWithinAllowedRoots(filePath, "Input path");
 
     if (!existsSync(resolved)) {
       throw new Error(`File not found: ${resolved}`);

@@ -21813,8 +21813,7 @@ function unmergeCells(filePath, sheet, table, startRow, startCol, endRow, endCol
 
 // src/services/numbersManager.ts
 import { existsSync as existsSync3 } from "node:fs";
-import { resolve as resolve2, extname } from "node:path";
-import { homedir as homedir2 } from "node:os";
+import { extname } from "node:path";
 
 // src/utils/exportPath.ts
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
@@ -21833,12 +21832,18 @@ var ALLOWED_EXPORT_ROOTS = [
   "/Volumes"
 ];
 var ALLOWED_EXPORT_ROOTS_TEXT = "your home directory, /tmp, /private/tmp, or /Volumes";
+var EXTRA_ROOTS_ENV = "APPLE_NUMBERS_MCP_EXTRA_ROOTS";
+function extraRoots() {
+  const raw = process.env[EXTRA_ROOTS_ENV];
+  if (!raw) return [];
+  return raw.split(":").map((s) => s.trim()).filter((s) => s.length > 0 && isAbsolute(s));
+}
 function canonicalize(path) {
   return realpathSync.native(path);
 }
 function allowedRoots() {
   const roots = [];
-  for (const root of ALLOWED_EXPORT_ROOTS) {
+  for (const root of [...ALLOWED_EXPORT_ROOTS, ...extraRoots()]) {
     if (!roots.includes(root)) roots.push(root);
     try {
       const canonical = canonicalize(root);
@@ -21912,9 +21917,32 @@ function resolveWithinAllowedRoots(path, label) {
 
 // src/services/numbersManager.ts
 var NumbersManager = class {
+  /**
+   * Resolve and validate the path of an EXISTING `.numbers` file.
+   *
+   * This is the resolver behind `get-file-info`, `read-table`, `search` and
+   * every in-place write (`set-cell`, `add-rows`, `set-formula`, …). It used to
+   * expand `~`, `resolve()` and check the extension — and nothing else — so
+   * those tools could read and modify a `.numbers` file **anywhere on disk**,
+   * while its sibling `validateOutputPath` had enforced the allowed-roots
+   * boundary since 1.1.19. That asymmetry was the largest remaining gap here.
+   *
+   * It now goes through the same `resolveWithinAllowedRoots` as the write side,
+   * which also brings the hardening that came with it: canonicalization via
+   * `realpathSync.native` (so a case-respelled segment cannot defeat the check
+   * on case-insensitive APFS) and symlink resolution BEFORE the comparison (so
+   * a link inside an allowed directory cannot point out of it).
+   *
+   * The extension is checked on the CANONICAL path for the same reason it is on
+   * the output side: a symlink must not be able to present a `.numbers` name
+   * for a target that is something else entirely.
+   *
+   * The built-in roots cover home, the temp dirs and `/Volumes`, so a file the
+   * user could plausibly want to open is almost always already inside them.
+   * `APPLE_NUMBERS_MCP_EXTRA_ROOTS` exists for the layouts they are not.
+   */
   validatePath(filePath) {
-    const expanded = filePath.startsWith("~") ? filePath.replace(/^~/, homedir2()) : filePath;
-    const resolved = resolve2(expanded);
+    const resolved = resolveWithinAllowedRoots(filePath, "Input path");
     if (!existsSync3(resolved)) {
       throw new Error(`File not found: ${resolved}`);
     }
@@ -22444,11 +22472,11 @@ First use get-file-info and read-table to read the relevant table(s) so you know
 // src/services/fileConfig.ts
 import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir2 } from "node:os";
 function fileConfigPath(env = process.env) {
   const override = env.APPLE_NUMBERS_MCP_CONFIG_FILE;
   if (override && override.trim()) return override.trim();
-  return join3(homedir3(), "Library", "Application Support", "apple-numbers-mcp", "config.json");
+  return join3(homedir2(), "Library", "Application Support", "apple-numbers-mcp", "config.json");
 }
 function loadFileConfig(env = process.env, path = fileConfigPath(env)) {
   const applied = [];

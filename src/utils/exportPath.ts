@@ -40,6 +40,32 @@ export const ALLOWED_EXPORT_ROOTS = [
 export const ALLOWED_EXPORT_ROOTS_TEXT = "your home directory, /tmp, /private/tmp, or /Volumes";
 
 /**
+ * Opt-in extra roots, colon-separated, e.g.
+ * `APPLE_NUMBERS_MCP_EXTRA_ROOTS=/Data/Finance:/srv/shared`.
+ *
+ * The built-in roots already cover home, the temp dirs and `/Volumes` (which is
+ * where network and external mounts appear), so this exists for the genuinely
+ * unusual layout — a `.numbers` file under a path none of those reach — rather
+ * than as routine configuration.
+ *
+ * Deliberately opt-IN and env-only: the boundary is a security property, so
+ * widening it has to be a decision the operator made once, not something a tool
+ * argument can do per call. Entries are canonicalized like the built-ins, so a
+ * symlinked entry cannot smuggle in a wider parent, and a relative or empty
+ * entry is ignored rather than silently resolving against the process cwd.
+ */
+export const EXTRA_ROOTS_ENV = "APPLE_NUMBERS_MCP_EXTRA_ROOTS";
+
+function extraRoots(): string[] {
+  const raw = process.env[EXTRA_ROOTS_ENV];
+  if (!raw) return [];
+  return raw
+    .split(":")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && isAbsolute(s));
+}
+
+/**
  * Canonicalize with the platform call, not the JS emulation.
  *
  * `fs.realpathSync` resolves symlinks but preserves whatever casing the caller
@@ -70,7 +96,7 @@ function canonicalize(path: string): string {
  */
 function allowedRoots(): string[] {
   const roots: string[] = [];
-  for (const root of ALLOWED_EXPORT_ROOTS) {
+  for (const root of [...ALLOWED_EXPORT_ROOTS, ...extraRoots()]) {
     if (!roots.includes(root)) roots.push(root);
     try {
       const canonical = canonicalize(root);
