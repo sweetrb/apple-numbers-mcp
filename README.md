@@ -675,6 +675,7 @@ All configuration is optional — the server works out of the box.
 | `APPLE_NUMBERS_MCP_MAX_BUFFER` | 50 MB (Python reader) / 64 MB (AppleScript) | Max bytes captured from a subprocess's stdout, applied to both the Python reader and the AppleScript layer. Raise it if a very large spreadsheet is truncated; lower it to cap memory. |
 | `APPLE_NUMBERS_MCP_CONFIG_FILE` | `~/Library/Application Support/apple-numbers-mcp/config.json` | Path to the JSON config file (see below). |
 | `APPLE_NUMBERS_MCP_NO_AUTO_SETUP` | unset (auto-setup on) | Set to a truthy value (`1`, `true`) to disable the one-time automatic creation of the Python venv. When set, the server will not run `setup.sh` on its own — you must provide `numbers-parser` yourself (`pip3 install numbers-parser` or `pnpm run setup`). |
+| `APPLE_NUMBERS_MCP_EXTRA_ROOTS` | unset | Colon-separated **absolute** directories to add to the allowed-path roots, e.g. `/Data/Finance:/srv/shared`. The built-in roots already cover your home directory, the temp dirs and `/Volumes` (where external and network mounts appear), so this is for genuinely unusual layouts rather than routine configuration. Entries are canonicalized like the built-ins, so a symlinked entry cannot smuggle in a wider parent; relative and empty entries are ignored. **Widening a security boundary — set it deliberately.** |
 | `APPLE_NUMBERS_MCP_SETUP_TIMEOUT` | `300000` (5 minutes) | Timeout in milliseconds for the automatic venv bootstrap (`setup.sh`). Raise it on a slow network where the `numbers-parser` pip install would otherwise time out. |
 
 > **Per-call timeouts are not configurable.** Every `numbers-parser` sidecar call
@@ -775,9 +776,10 @@ These are tracked for future releases. The underlying `numbers-parser` library h
 - Ensure the file extension is `.numbers`.
 
 ### "Output path … is outside the allowed roots" / "Input path … is outside the allowed roots"
-- `export-table`, `create-spreadsheet` and `import-csv` read and write ordinary files, so their paths are restricted to your **home directory**, `/tmp`, `/private/tmp`, and `/Volumes` — the server will not write into `/etc`, `/Library`, an app bundle, or any other system location, and will not read a source file from one.
+- Every tool that touches a file on disk is bounded to your **home directory**, `/tmp`, `/private/tmp`, and `/Volumes` — the server will not write into `/etc`, `/Library`, an app bundle, or any other system location, and will not read from one.
+- **As of 1.2.0 this covers the `.numbers` file itself**, not just export/import destinations. `get-file-info`, `read-table`, `search` and the in-place writes (`set-cell`, `add-rows`, `set-formula`, …) previously accepted a path anywhere on disk.
 - Symlinks are resolved **before** the check, so a link inside an allowed directory that points outside it is rejected too; the error reports the resolved path, which is usually the quickest way to see where a path really went.
-- Fix: choose a path under one of those roots (`~/Documents/report.csv`, `/tmp/report.csv`). There is no override setting.
+- Fix: choose a path under one of those roots (`~/Documents/report.numbers`, `/tmp/report.csv`). If your spreadsheets genuinely live somewhere else, add that directory to `APPLE_NUMBERS_MCP_EXTRA_ROOTS` — see [Environment variables](#environment-variables).
 
 ### Formatting / formula tools fail with "Numbers.app not running" or "Not authorized to send Apple events to Numbers"
 - Open Numbers.app at least once. macOS will prompt for automation permission — accept it.

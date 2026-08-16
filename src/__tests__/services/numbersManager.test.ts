@@ -52,11 +52,44 @@ describe("NumbersManager", () => {
     it("should throw for non-existent files", () => {
       mockedExistsSync.mockReturnValue(false);
 
-      expect(() => manager.getFileInfo("/missing.numbers")).toThrow("File not found");
+      expect(() => manager.getFileInfo("/tmp/missing.numbers")).toThrow("File not found");
     });
 
     it("should throw for non-.numbers files", () => {
-      expect(() => manager.getFileInfo("/data.xlsx")).toThrow("Not a Numbers file");
+      expect(() => manager.getFileInfo("/tmp/data.xlsx")).toThrow("Not a Numbers file");
+    });
+
+    // The resolver for EXISTING files used to expand ~, resolve() and check the
+    // extension — and nothing else. So read-table / search / get-file-info and
+    // every in-place write could reach a .numbers file ANYWHERE on disk, while
+    // the write side had enforced the boundary since 1.1.19.
+    it("refuses an existing file outside the allowed roots", () => {
+      mockedExistsSync.mockReturnValue(true);
+      expect(() => manager.getFileInfo("/etc/secrets.numbers")).toThrow(
+        /outside the allowed roots/
+      );
+      // and it must not have reached the sidecar at all
+      expect(mockedRunNumbersReader).not.toHaveBeenCalled();
+    });
+
+    it("refuses an out-of-roots path for an IN-PLACE WRITE too, not just reads", () => {
+      mockedExistsSync.mockReturnValue(true);
+      expect(() => manager.setCell("/etc/secrets.numbers", "A1", "x")).toThrow(
+        /outside the allowed roots/
+      );
+    });
+
+    it("names the boundary in the error so the caller can correct the path", () => {
+      mockedExistsSync.mockReturnValue(true);
+      expect(() => manager.getFileInfo("/etc/secrets.numbers")).toThrow(/home directory/);
+    });
+
+    it("still accepts a path inside an allowed root", () => {
+      mockedExistsSync.mockReturnValue(true);
+      mockedRunNumbersReader.mockReturnValue({
+        data: { path: "/tmp/ok.numbers", sheets: [], defaultSheet: "" },
+      });
+      expect(() => manager.getFileInfo("/tmp/ok.numbers")).not.toThrow();
     });
 
     it("should expand ~ to home directory", () => {
@@ -80,13 +113,13 @@ describe("NumbersManager", () => {
 
     it("should accept valid .numbers files", () => {
       const mockInfo: NumbersFileInfo = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheets: [],
         defaultSheet: "",
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockInfo });
 
-      const result = manager.getFileInfo("/test.numbers");
+      const result = manager.getFileInfo("/tmp/test.numbers");
 
       expect(result).toEqual(mockInfo);
     });
@@ -95,7 +128,7 @@ describe("NumbersManager", () => {
   describe("getFileInfo", () => {
     it("should return file info from Python bridge", () => {
       const mockInfo: NumbersFileInfo = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheets: [
           {
             name: "Sheet 1",
@@ -114,7 +147,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockInfo });
 
-      const result = manager.getFileInfo("/test.numbers");
+      const result = manager.getFileInfo("/tmp/test.numbers");
 
       expect(result).toEqual(mockInfo);
       expect(mockedRunNumbersReader).toHaveBeenCalledWith("info", expect.any(Array));
@@ -125,7 +158,7 @@ describe("NumbersManager", () => {
         error: "Failed to parse file",
       });
 
-      expect(() => manager.getFileInfo("/test.numbers")).toThrow("Failed to parse file");
+      expect(() => manager.getFileInfo("/tmp/test.numbers")).toThrow("Failed to parse file");
     });
   });
 
@@ -144,7 +177,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockData });
 
-      const result = manager.readTable("/test.numbers", "Revenue", "Q1");
+      const result = manager.readTable("/tmp/test.numbers", "Revenue", "Q1");
 
       expect(result).toEqual(mockData);
       expect(mockedRunNumbersReader).toHaveBeenCalledWith(
@@ -164,7 +197,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockData });
 
-      manager.readTable("/test.numbers");
+      manager.readTable("/tmp/test.numbers");
 
       const args = mockedRunNumbersReader.mock.calls[0][1];
       expect(args).not.toContain("--sheet");
@@ -186,7 +219,7 @@ describe("NumbersManager", () => {
         },
       });
 
-      manager.readTable("/test.numbers", undefined, undefined, {
+      manager.readTable("/tmp/test.numbers", undefined, undefined, {
         startRow: 2,
         endRow: 5,
         columns: ["Name", 2],
@@ -218,7 +251,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.search("/test.numbers", "Alice", "Sheet 1");
+      const result = manager.search("/tmp/test.numbers", "Alice", "Sheet 1");
 
       expect(result.count).toBe(1);
       expect(result.results[0].value).toBe("Alice");
@@ -233,7 +266,7 @@ describe("NumbersManager", () => {
         data: { results: [], count: 0 },
       });
 
-      manager.search("/test.numbers", "missing");
+      manager.search("/tmp/test.numbers", "missing");
 
       const args = mockedRunNumbersReader.mock.calls[0][1];
       expect(args).not.toContain("--sheet");
@@ -251,7 +284,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.exportTable("/test.numbers", "csv", "/tmp/output.csv");
+      const result = manager.exportTable("/tmp/test.numbers", "csv", "/tmp/output.csv");
 
       expect(result.format).toBe("csv");
       expect(result.rowCount).toBe(10);
@@ -272,7 +305,7 @@ describe("NumbersManager", () => {
         },
       });
 
-      manager.exportTable("/test.numbers", "json", "~/out.json");
+      manager.exportTable("/tmp/test.numbers", "json", "~/out.json");
 
       const args = mockedRunNumbersReader.mock.calls[0][1];
       // The output path arg should not contain ~
@@ -291,7 +324,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockCell });
 
-      const result = manager.getCell("/test.numbers", "Sheet 1", "Table 1", 2, 1);
+      const result = manager.getCell("/tmp/test.numbers", "Sheet 1", "Table 1", 2, 1);
 
       expect(result.value).toBe(42);
       expect(result.type).toBe("number");
@@ -317,7 +350,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockCell });
 
-      manager.getCell("/test.numbers", "Sheet 1", "Table 1", 0, 0, true);
+      manager.getCell("/tmp/test.numbers", "Sheet 1", "Table 1", 0, 0, true);
 
       const args = mockedRunNumbersReader.mock.calls[0][1];
       expect(args).toContain("--verbose");
@@ -388,7 +421,7 @@ describe("NumbersManager", () => {
     it("should omit optional args when not provided", () => {
       mockedRunNumbersReader.mockReturnValue({
         data: {
-          path: "/t.numbers",
+          path: "/tmp/t.numbers",
           sheetName: "Sheet 1",
           tableName: "Table 1",
           numHeaders: 1,
@@ -408,7 +441,7 @@ describe("NumbersManager", () => {
   describe("setCell", () => {
     it("should pass row, col, value, and options", () => {
       const mockResult: SetCellResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 1",
         row: 1,
@@ -417,7 +450,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.setCell("/test.numbers", 1, 2, "hello", {
+      const result = manager.setCell("/tmp/test.numbers", 1, 2, "hello", {
         sheet: "Sheet 1",
         table: "Table 1",
         type: "string",
@@ -442,14 +475,14 @@ describe("NumbersManager", () => {
 
     it("should throw for non-existent file", () => {
       mockedExistsSync.mockReturnValue(false);
-      expect(() => manager.setCell("/missing.numbers", 0, 0, "x")).toThrow("File not found");
+      expect(() => manager.setCell("/tmp/missing.numbers", 0, 0, "x")).toThrow("File not found");
     });
   });
 
   describe("setCellsBatch", () => {
     it("should pass updates array to Python bridge", () => {
       const mockResult: SetCellsBatchResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 1",
         cellsWritten: 3,
@@ -461,7 +494,7 @@ describe("NumbersManager", () => {
         { row: 0, col: 1, value: "B" },
         { row: 1, col: 0, value: 42 },
       ];
-      const result = manager.setCellsBatch("/test.numbers", updates, { sheet: "S1" });
+      const result = manager.setCellsBatch("/tmp/test.numbers", updates, { sheet: "S1" });
 
       expect(result.cellsWritten).toBe(3);
       expect(mockedRunNumbersReader).toHaveBeenCalledWith(
@@ -474,7 +507,7 @@ describe("NumbersManager", () => {
   describe("addRows", () => {
     it("should pass rows array to Python bridge", () => {
       const mockResult: AddRowsResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 1",
         rowsAdded: 2,
@@ -487,7 +520,7 @@ describe("NumbersManager", () => {
         ["Alice", 30],
         ["Bob", 25],
       ];
-      const result = manager.addRows("/test.numbers", rows, {
+      const result = manager.addRows("/tmp/test.numbers", rows, {
         sheet: "Sheet 1",
         table: "Table 1",
       });
@@ -503,7 +536,7 @@ describe("NumbersManager", () => {
     it("should omit optional args when not provided", () => {
       mockedRunNumbersReader.mockReturnValue({
         data: {
-          path: "/t.numbers",
+          path: "/tmp/t.numbers",
           sheetName: "S",
           tableName: "T",
           rowsAdded: 1,
@@ -512,7 +545,7 @@ describe("NumbersManager", () => {
         },
       });
 
-      manager.addRows("/test.numbers", [["x"]]);
+      manager.addRows("/tmp/test.numbers", [["x"]]);
 
       const args = mockedRunNumbersReader.mock.calls[0][1];
       expect(args).not.toContain("--sheet");
@@ -522,14 +555,14 @@ describe("NumbersManager", () => {
     it("should throw when Python bridge returns error", () => {
       mockedRunNumbersReader.mockReturnValue({ error: "Table not found" });
 
-      expect(() => manager.addRows("/test.numbers", [["x"]])).toThrow("Table not found");
+      expect(() => manager.addRows("/tmp/test.numbers", [["x"]])).toThrow("Table not found");
     });
   });
 
   describe("deleteRows", () => {
     it("should pass start and end row indices", () => {
       const mockResult: DeleteRowsResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 1",
         rowsDeleted: 3,
@@ -537,7 +570,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.deleteRows("/test.numbers", 2, 4, { sheet: "Sheet 1" });
+      const result = manager.deleteRows("/tmp/test.numbers", 2, 4, { sheet: "Sheet 1" });
 
       expect(result.rowsDeleted).toBe(3);
       expect(mockedRunNumbersReader).toHaveBeenCalledWith(
@@ -549,14 +582,16 @@ describe("NumbersManager", () => {
     it("should throw when Python bridge returns error", () => {
       mockedRunNumbersReader.mockReturnValue({ error: "Row range out of bounds" });
 
-      expect(() => manager.deleteRows("/test.numbers", 0, 100)).toThrow("Row range out of bounds");
+      expect(() => manager.deleteRows("/tmp/test.numbers", 0, 100)).toThrow(
+        "Row range out of bounds"
+      );
     });
   });
 
   describe("addSheet", () => {
     it("should pass sheet name and options", () => {
       const mockResult: AddSheetResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "New Sheet",
         tableName: "Data",
         numRows: 1,
@@ -564,7 +599,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.addSheet("/test.numbers", "New Sheet", {
+      const result = manager.addSheet("/tmp/test.numbers", "New Sheet", {
         tableName: "Data",
         headers: ["A", "B", "C"],
       });
@@ -580,7 +615,7 @@ describe("NumbersManager", () => {
   describe("addTable", () => {
     it("should pass options to Python bridge", () => {
       const mockResult: AddTableResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 2",
         numRows: 1,
@@ -588,7 +623,7 @@ describe("NumbersManager", () => {
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.addTable("/test.numbers", {
+      const result = manager.addTable("/tmp/test.numbers", {
         sheet: "Sheet 1",
         tableName: "Table 2",
         headers: ["X", "Y"],
@@ -644,7 +679,7 @@ describe("NumbersManager", () => {
   describe("updateRows", () => {
     it("should pass updates array to Python bridge", () => {
       const mockResult: UpdateRowsResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         tableName: "Table 1",
         rowsUpdated: 2,
@@ -655,7 +690,7 @@ describe("NumbersManager", () => {
         { row: 1, values: ["Alice", 30, "NYC"] },
         { row: 2, values: ["Bob", 25, "LA"] },
       ];
-      const result = manager.updateRows("/test.numbers", updates, { sheet: "Sheet 1" });
+      const result = manager.updateRows("/tmp/test.numbers", updates, { sheet: "Sheet 1" });
 
       expect(result.rowsUpdated).toBe(2);
       expect(mockedRunNumbersReader).toHaveBeenCalledWith(
@@ -668,13 +703,13 @@ describe("NumbersManager", () => {
   describe("renameSheet", () => {
     it("should pass new name and optional sheet selector", () => {
       const mockResult: RenameResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         oldName: "Sheet 1",
         newName: "Data",
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.renameSheet("/test.numbers", "Data", "Sheet 1");
+      const result = manager.renameSheet("/tmp/test.numbers", "Data", "Sheet 1");
 
       expect(result.oldName).toBe("Sheet 1");
       expect(result.newName).toBe("Data");
@@ -688,14 +723,14 @@ describe("NumbersManager", () => {
   describe("renameTable", () => {
     it("should pass new name and optional selectors", () => {
       const mockResult: RenameResult = {
-        path: "/test.numbers",
+        path: "/tmp/test.numbers",
         sheetName: "Sheet 1",
         oldName: "Table 1",
         newName: "Sales",
       };
       mockedRunNumbersReader.mockReturnValue({ data: mockResult });
 
-      const result = manager.renameTable("/test.numbers", "Sales", {
+      const result = manager.renameTable("/tmp/test.numbers", "Sales", {
         sheet: "Sheet 1",
         table: "Table 1",
       });

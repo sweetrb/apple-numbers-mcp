@@ -151,7 +151,21 @@ describe.skipIf(!canRun)("Integration: Numbers Reader", () => {
 
   describe("error handling", () => {
     it("should throw for non-existent file", () => {
-      expect(() => manager.getFileInfo("/nonexistent.numbers")).toThrow("File not found");
+      // Inside an allowed root, so the boundary passes and existence is what
+      // fails. `/nonexistent.numbers` sits at the filesystem root and is now
+      // refused by the boundary first — see the ordering test below.
+      expect(() => manager.getFileInfo("/tmp/nonexistent.numbers")).toThrow("File not found");
+    });
+
+    it("reports the BOUNDARY before existence for an out-of-roots path", () => {
+      // Deliberate ordering, not an accident: answering "File not found" for a
+      // path outside the roots would confirm whether files exist out there.
+      // The boundary refuses first, so nothing is revealed either way — the
+      // same error whether or not the file is real.
+      expect(() => manager.getFileInfo("/nonexistent.numbers")).toThrow(
+        /outside the allowed roots/
+      );
+      expect(() => manager.getFileInfo("/etc/passwd.numbers")).toThrow(/outside the allowed roots/);
     });
 
     it("should throw for wrong extension", () => {

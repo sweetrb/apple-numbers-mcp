@@ -1,5 +1,42 @@
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-16
+
+### Security
+
+- **The `.numbers` file itself is now bounded by the allowed roots.**
+  `validatePath()` — the resolver behind `get-file-info`, `read-table`, `search`
+  and every in-place write (`set-cell`, `add-rows`, `set-formula`, …) — expanded
+  `~`, called `resolve()` and checked the extension, and nothing else. So those
+  tools could read and modify a `.numbers` file **anywhere on disk**, while its
+  sibling `validateOutputPath` had enforced the boundary since 1.1.19. That
+  asymmetry — existing-file reads and in-place writes versus new-file outputs —
+  was the largest remaining gap in this server.
+
+  It now goes through the same `resolveWithinAllowedRoots` as the write side,
+  which also brings the hardening that came with it: canonicalization via
+  `realpathSync.native`, so a case-respelled segment cannot defeat the check on
+  case-insensitive APFS, and symlink resolution **before** the comparison, so a
+  link inside an allowed directory cannot point out of it. The extension is
+  checked on the canonical path, so a symlink cannot present a `.numbers` name
+  for a target that is something else.
+
+  **This can reject paths that previously worked.** The built-in roots cover
+  your home directory, the temp dirs and `/Volumes` — where external and network
+  mounts appear — so a spreadsheet you could plausibly want to open is almost
+  always already inside them. For the layouts they are not, see below.
+
+### Added
+
+- **`APPLE_NUMBERS_MCP_EXTRA_ROOTS`** — colon-separated absolute directories to
+  add to the allowed roots, e.g. `/Data/Finance:/srv/shared`.
+
+  Deliberately opt-in and environment-only: the boundary is a security property,
+  so widening it should be a decision the operator makes once, not something a
+  tool argument can do per call. Entries are canonicalized like the built-ins, so
+  a symlinked entry cannot smuggle in a wider parent, and relative or empty
+  entries are ignored rather than silently resolving against the process cwd.
+
 ### Changed
 
 - **Supply-chain soak raised from 1 day to 7 days** (`minimumReleaseAge: 10080` in
