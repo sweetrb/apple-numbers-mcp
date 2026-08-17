@@ -1,5 +1,33 @@
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-16
+
+### Fixed
+
+- **The path boundary was enforced but not documented where it is read.** 1.2.0
+  bounded the `.numbers` file itself to the allowed roots, but only the three
+  tools that had always been bounded (`export-table`, `create-spreadsheet`,
+  `import-csv`) said so in their descriptions. The other **21** path-taking
+  tools — `read-table`, `search`, `set-cell`, `set-formula` and the rest — said
+  nothing, so a caller could be refused for a reason it had no way to
+  anticipate.
+
+  A tool description is the only place an AI assistant learns a constraint
+  *before* it calls the tool. A bound that lives only in the README gets
+  discovered as a runtime failure instead of avoided.
+
+  All 21 now carry the boundary note, appended last so each description keeps
+  its `Use when / Returns / Do not use when / Safety` shape. It is defined
+  **once** and interpolates the roots list and the env var name from the module
+  that owns them, so 21 copies cannot drift apart.
+
+### Internal
+
+- A conformance test asserts that **every** tool taking a file path documents
+  the boundary, and names the offenders when one does not. Adding a new
+  path-taking tool without the note now fails CI rather than shipping a silent
+  documentation gap.
+
 ## [1.2.0] - 2026-08-16
 
 ### Security
