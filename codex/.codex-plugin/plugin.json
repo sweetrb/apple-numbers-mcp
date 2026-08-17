@@ -1,6 +1,6 @@
 {
   "name": "apple-numbers",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Read and write Apple Numbers spreadsheets - read tables, create files, update cells, manage sheets/tables, search, write live formulas, format cells (font, color, alignment, merges), import CSV/TSV/JSON, and export data (macOS only).",
   "author": {
     "name": "Rob Sweet",
