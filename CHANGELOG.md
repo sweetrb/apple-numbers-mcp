@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-03
+
+### Security
+
+- **`fast-uri` 3.1.5 → 3.1.6, clearing GHSA-5jgf-p345-68v8 (high) and GHSA-fph4-wmhf-6fwf (high) — both in the shipped bundle.** `fast-uri` reaches the published package via `@modelcontextprotocol/sdk` → `ajv`/`ajv-formats`, and esbuild inlines its source into `build/index.js`, so the committed bundle carried the vulnerable copy. Both advisories are incomplete-fix variants of earlier `fast-uri` host-confusion/SSRF issues: GHSA-5jgf-p345-68v8 is host confusion from skipped IDN canonicalization on scheme-relative references resolved with `resolve()`, and GHSA-fph4-wmhf-6fwf is SSRF via `normalize()`/`resolve()` decoding a hostname's percent-escapes twice, letting a nested percent-encoded host survive the first decode and become a live destination on the second. `pnpm-workspace.yaml`'s override — already a caret range from the 1.1.12 `fast-uri` fix, `^3.1.5` — is bumped to `^3.1.6`, which stays inside `ajv`'s expected major while letting future patch fixes flow in. Clears Dependabot alerts #15 and #16.
+
 ## [1.2.1] - 2026-08-16
 
 ### Fixed
