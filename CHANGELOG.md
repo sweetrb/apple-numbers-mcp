@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+## [1.2.3] - 2026-09-09
+
+### Changed
+- Removed three unused imports (`resolve`, `homedir` in `numbersManager.ts`;
+  `existsSync` in `exportPath.ts`), clearing the last three ESLint
+  `no-unused-vars` warnings. **No behavior change.** The committed bundle does
+  differ, but only cosmetically: dropping these imports shifts esbuild's
+  name-deduplication counters, renaming the shadowed bindings in
+  `build/index.js` (`resolve3` → `resolve2`, `existsSync3/4/5` →
+  `existsSync2/3/4`). All 42 changed lines are that renumbering and nothing
+  else — every counter drops by exactly one — so do not go looking for a
+  functional change in this release.
+
 ## [1.2.2] - 2026-09-03
 
 ### Security
