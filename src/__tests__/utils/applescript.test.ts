@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
   runAppleScript,
@@ -84,6 +84,56 @@ describe("runAppleScript", () => {
       throw err;
     });
     expect(() => runAppleScript("noop")).toThrow("boom");
+  });
+
+  // The maxBuffer override is the documented escape hatch for a table read that
+  // blows past even the 64 MB default and dies with ENOBUFS. getMaxBuffer() is
+  // read per call, so it can be exercised without re-importing the module — and
+  // nothing here had ever set the variable, leaving every branch of the parse
+  // one-sided.
+  describe("APPLE_NUMBERS_MCP_MAX_BUFFER", () => {
+    const KEY = "APPLE_NUMBERS_MCP_MAX_BUFFER";
+    const DEFAULT = 64 * 1024 * 1024;
+    let prev: string | undefined;
+
+    beforeEach(() => {
+      prev = process.env[KEY];
+      mockedExecFileSync.mockReturnValue("ok" as unknown as Buffer);
+    });
+
+    afterEach(() => {
+      if (prev === undefined) delete process.env[KEY];
+      else process.env[KEY] = prev;
+    });
+
+    const maxBufferOf = (): number =>
+      (mockedExecFileSync.mock.calls[0][2] as { maxBuffer: number }).maxBuffer;
+
+    it("honors a positive numeric override", () => {
+      process.env[KEY] = String(8 * 1024 * 1024);
+      runAppleScript("noop");
+      expect(maxBufferOf()).toBe(8 * 1024 * 1024);
+    });
+
+    // A bad value must fall back rather than hand execFileSync a NaN/zero/
+    // negative cap, which would either throw or truncate every read.
+    it.each([
+      ["non-numeric", "lots"],
+      ["empty", ""],
+      ["zero", "0"],
+      ["negative", "-1"],
+      ["Infinity", "Infinity"],
+    ])("falls back to the 64MB default for a %s value", (_label, value) => {
+      process.env[KEY] = value;
+      runAppleScript("noop");
+      expect(maxBufferOf()).toBe(DEFAULT);
+    });
+
+    it("uses the default when the variable is unset", () => {
+      delete process.env[KEY];
+      runAppleScript("noop");
+      expect(maxBufferOf()).toBe(DEFAULT);
+    });
   });
 });
 

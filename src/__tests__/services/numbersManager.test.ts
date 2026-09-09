@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NumbersManager } from "../../services/numbersManager.js";
 import * as pythonUtils from "../../utils/python.js";
+import * as appleScript from "../../utils/applescript.js";
 import type {
   NumbersFileInfo,
   TableData,
@@ -18,12 +19,28 @@ import type {
   UpdateRowsResult,
   RenameResult,
 } from "../../types.js";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 
 // Mock the python utility module
 vi.mock("../../utils/python.js", () => ({
   runNumbersReader: vi.fn(),
   checkDependencies: vi.fn(),
+}));
+
+// Mock the AppleScript layer. The eight Numbers.app-backed methods (formulas,
+// styles, dimensions, merge) delegate to it after resolving the path, and
+// applescript.ts is unit-tested directly in utils/applescript.test.ts. Mocking
+// it here keeps these tests on the manager's own contract — validate the path,
+// then hand the RESOLVED path through — without spawning osascript.
+vi.mock("../../utils/applescript.js", () => ({
+  setFormula: vi.fn(),
+  setFormulasBatch: vi.fn(),
+  setCellStyle: vi.fn(),
+  setCellsStyleBatch: vi.fn(),
+  setColumnWidth: vi.fn(),
+  setRowHeight: vi.fn(),
+  mergeCells: vi.fn(),
+  unmergeCells: vi.fn(),
 }));
 
 // Mock fs.existsSync only. The rest of node:fs stays real because the path
@@ -35,6 +52,7 @@ vi.mock("node:fs", async () => {
 });
 
 const mockedRunNumbersReader = vi.mocked(pythonUtils.runNumbersReader);
+const mockedAppleScript = vi.mocked(appleScript);
 const mockedCheckDeps = vi.mocked(pythonUtils.checkDependencies);
 const mockedExistsSync = vi.mocked(existsSync);
 
@@ -807,6 +825,465 @@ describe("NumbersManager", () => {
       expect(() =>
         manager.exportTable("/tmp/test.numbers", "csv", "/Volumes-evil/out.csv")
       ).toThrow(/outside the allowed roots/);
+    });
+  });
+
+  // Every sidecar-backed method ends with the same two lines:
+  //     if (result.error) throw new Error(result.error);
+  //     return result.data!;
+  // The happy-path tests above never feed the sidecar's structured {error} back,
+  // so the throw was unexercised on thirteen of them. A method that lost the
+  // check would hand the caller `undefined` as data and fail far from the cause.
+  describe("sidecar error propagation", () => {
+    const calls: [string, (m: NumbersManager) => unknown][] = [
+      ["readTable", (m) => m.readTable("/tmp/test.numbers")],
+      ["search", (m) => m.search("/tmp/test.numbers", "q")],
+      ["exportTable", (m) => m.exportTable("/tmp/test.numbers", "csv", "/tmp/out.csv")],
+      ["getCell", (m) => m.getCell("/tmp/test.numbers", "Sheet 1", "Table 1", 0, 0)],
+      ["createSpreadsheet", (m) => m.createSpreadsheet("/tmp/new.numbers", ["A"])],
+      ["setCell", (m) => m.setCell("/tmp/test.numbers", 0, 0, "v")],
+      ["setCellsBatch", (m) => m.setCellsBatch("/tmp/test.numbers", [])],
+      ["addRows", (m) => m.addRows("/tmp/test.numbers", [["a"]])],
+      ["deleteRows", (m) => m.deleteRows("/tmp/test.numbers", 0, 1)],
+      ["addSheet", (m) => m.addSheet("/tmp/test.numbers", "Sheet 2")],
+      ["addTable", (m) => m.addTable("/tmp/test.numbers")],
+      ["importFile", (m) => m.importFile("/tmp/data.csv", "/tmp/out.numbers")],
+      ["updateRows", (m) => m.updateRows("/tmp/test.numbers", [])],
+      ["renameSheet", (m) => m.renameSheet("/tmp/test.numbers", "New")],
+      ["renameTable", (m) => m.renameTable("/tmp/test.numbers", "New")],
+      ["getFileInfo", (m) => m.getFileInfo("/tmp/test.numbers")],
+    ];
+
+    it.each(calls)("%s rethrows the sidecar's error verbatim", (_name, call) => {
+      mockedRunNumbersReader.mockReturnValue({ error: "numbers-parser: table not found" });
+      expect(() => call(manager)).toThrow("numbers-parser: table not found");
+    });
+  });
+
+  // The optional CLI flags each sit behind their own `if`. The happy-path tests
+  // exercise a mixture of them, which left roughly twenty of the two-sided
+  // branches one-sided. Each method here is driven BOTH ways and the argument
+  // vector is asserted exactly, so a flag pushed under the wrong condition —
+  // or a flag name typo — fails rather than being absorbed by arrayContaining.
+  describe("optional sidecar flags", () => {
+    /** Arguments after the leading resolved path(s), which are machine-dependent. */
+    const tail = (skip = 1): string[] => mockedRunNumbersReader.mock.calls[0][1].slice(skip);
+
+    beforeEach(() => {
+      mockedRunNumbersReader.mockReturnValue({ data: {} });
+    });
+
+    it("readTable passes every filter, and none when unset", () => {
+      manager.readTable("/tmp/test.numbers", "Sheet 1", "Table 1", {
+        startRow: 1,
+        endRow: 5,
+        columns: ["A", 2],
+      });
+      expect(tail()).toEqual([
+        "--sheet",
+        "Sheet 1",
+        "--table",
+        "Table 1",
+        "--start-row",
+        "1",
+        "--end-row",
+        "5",
+        "--columns",
+        '["A",2]',
+      ]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.readTable("/tmp/test.numbers");
+      expect(tail()).toEqual([]);
+    });
+
+    it("search passes --sheet only when given", () => {
+      manager.search("/tmp/test.numbers", "needle", "Sheet 1");
+      expect(tail()).toEqual(["needle", "--sheet", "Sheet 1"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.search("/tmp/test.numbers", "needle");
+      expect(tail()).toEqual(["needle"]);
+    });
+
+    it("exportTable passes --sheet/--table only when given", () => {
+      manager.exportTable("/tmp/test.numbers", "csv", "/tmp/out.csv", "Sheet 1", "Table 1");
+      expect(tail(3)).toEqual(["--sheet", "Sheet 1", "--table", "Table 1"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.exportTable("/tmp/test.numbers", "json", "/tmp/out.json");
+      expect(tail(1).slice(0, 1)).toEqual(["json"]);
+      expect(tail(3)).toEqual([]);
+    });
+
+    it("getCell passes --verbose only when asked", () => {
+      manager.getCell("/tmp/test.numbers", "Sheet 1", "Table 1", 2, 3, true);
+      expect(tail()).toEqual(["Sheet 1", "Table 1", "2", "3", "--verbose"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.getCell("/tmp/test.numbers", "Sheet 1", "Table 1", 2, 3);
+      expect(tail()).toEqual(["Sheet 1", "Table 1", "2", "3"]);
+    });
+
+    it("createSpreadsheet passes --sheet-name/--table-name/--rows only when given", () => {
+      manager.createSpreadsheet("/tmp/new.numbers", ["A", "B"], {
+        sheetName: "S",
+        tableName: "T",
+        rows: [[1, 2]],
+      });
+      expect(tail()).toEqual([
+        '["A","B"]',
+        "--sheet-name",
+        "S",
+        "--table-name",
+        "T",
+        "--rows",
+        "[[1,2]]",
+      ]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.createSpreadsheet("/tmp/new.numbers", ["A", "B"]);
+      expect(tail()).toEqual(['["A","B"]']);
+    });
+
+    it("setCell passes --sheet/--table/--type only when given", () => {
+      manager.setCell("/tmp/test.numbers", 1, 2, "v", {
+        sheet: "S",
+        table: "T",
+        type: "text",
+      });
+      expect(tail()).toEqual(["1", "2", '"v"', "--sheet", "S", "--table", "T", "--type", "text"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.setCell("/tmp/test.numbers", 1, 2, "v");
+      expect(tail()).toEqual(["1", "2", '"v"']);
+    });
+
+    it("setCellsBatch passes --sheet/--table only when given", () => {
+      manager.setCellsBatch("/tmp/test.numbers", [{ row: 0, col: 0, value: 1 }], {
+        sheet: "S",
+        table: "T",
+      });
+      expect(tail()).toEqual(['[{"row":0,"col":0,"value":1}]', "--sheet", "S", "--table", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.setCellsBatch("/tmp/test.numbers", []);
+      expect(tail()).toEqual(["[]"]);
+    });
+
+    it("addRows passes --sheet/--table only when given", () => {
+      manager.addRows("/tmp/test.numbers", [[1]], { sheet: "S", table: "T" });
+      expect(tail()).toEqual(["[[1]]", "--sheet", "S", "--table", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.addRows("/tmp/test.numbers", [[1]]);
+      expect(tail()).toEqual(["[[1]]"]);
+    });
+
+    it("deleteRows passes --sheet/--table only when given", () => {
+      manager.deleteRows("/tmp/test.numbers", 2, 4, { sheet: "S", table: "T" });
+      expect(tail()).toEqual(["2", "4", "--sheet", "S", "--table", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.deleteRows("/tmp/test.numbers", 2, 4);
+      expect(tail()).toEqual(["2", "4"]);
+    });
+
+    it("addSheet passes every shape flag, and none when unset", () => {
+      manager.addSheet("/tmp/test.numbers", "Sheet 2", {
+        tableName: "T",
+        headers: ["A"],
+        numRows: 3,
+        numCols: 4,
+      });
+      expect(tail()).toEqual([
+        "Sheet 2",
+        "--table-name",
+        "T",
+        "--headers",
+        '["A"]',
+        "--num-rows",
+        "3",
+        "--num-cols",
+        "4",
+      ]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.addSheet("/tmp/test.numbers", "Sheet 2");
+      expect(tail()).toEqual(["Sheet 2"]);
+    });
+
+    it("addTable passes every shape flag, and none when unset", () => {
+      manager.addTable("/tmp/test.numbers", {
+        sheet: "S",
+        tableName: "T",
+        headers: ["A"],
+        numRows: 3,
+        numCols: 4,
+      });
+      expect(tail()).toEqual([
+        "--sheet",
+        "S",
+        "--table-name",
+        "T",
+        "--headers",
+        '["A"]',
+        "--num-rows",
+        "3",
+        "--num-cols",
+        "4",
+      ]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.addTable("/tmp/test.numbers");
+      expect(tail()).toEqual([]);
+    });
+
+    // numRows/numCols are `!== undefined` rather than truthy checks: 0 is a
+    // meaningful dimension and must still reach the sidecar.
+    it("addTable forwards a zero dimension rather than dropping it as falsy", () => {
+      manager.addTable("/tmp/test.numbers", { numRows: 0, numCols: 0 });
+      expect(tail()).toEqual(["--num-rows", "0", "--num-cols", "0"]);
+    });
+
+    it("importFile passes --format/--sheet-name/--table-name only when given", () => {
+      manager.importFile("/tmp/data.csv", "/tmp/out.numbers", {
+        format: "tsv",
+        sheetName: "S",
+        tableName: "T",
+      });
+      expect(tail(2)).toEqual(["--format", "tsv", "--sheet-name", "S", "--table-name", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.importFile("/tmp/data.csv", "/tmp/out.numbers");
+      expect(tail(2)).toEqual([]);
+    });
+
+    it("importFile treats format 'auto' as no --format flag", () => {
+      manager.importFile("/tmp/data.csv", "/tmp/out.numbers", { format: "auto" });
+      expect(tail(2)).toEqual([]);
+    });
+
+    it("updateRows passes --sheet/--table only when given", () => {
+      manager.updateRows("/tmp/test.numbers", [{ row: 0, values: [1] }], {
+        sheet: "S",
+        table: "T",
+      });
+      expect(tail()).toEqual(['[{"row":0,"values":[1]}]', "--sheet", "S", "--table", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.updateRows("/tmp/test.numbers", []);
+      expect(tail()).toEqual(["[]"]);
+    });
+
+    it("renameSheet passes --sheet only when given", () => {
+      manager.renameSheet("/tmp/test.numbers", "New", "Old");
+      expect(tail()).toEqual(["New", "--sheet", "Old"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.renameSheet("/tmp/test.numbers", "New");
+      expect(tail()).toEqual(["New"]);
+    });
+
+    it("renameTable passes --sheet/--table only when given", () => {
+      manager.renameTable("/tmp/test.numbers", "New", { sheet: "S", table: "T" });
+      expect(tail()).toEqual(["New", "--sheet", "S", "--table", "T"]);
+
+      mockedRunNumbersReader.mockClear();
+      manager.renameTable("/tmp/test.numbers", "New");
+      expect(tail()).toEqual(["New"]);
+    });
+  });
+
+  // The eight Numbers.app-backed methods were registered as tools and shipped
+  // but had no unit test at all: every one of them was an uncovered function.
+  // Each does exactly two things — run the caller's path through validatePath
+  // (the allowed-roots boundary), then delegate — and both halves matter: a
+  // method that delegated the RAW path would hand osascript a location the
+  // boundary never approved.
+  describe("AppleScript-backed writes", () => {
+    const resolvedTmp = (name: string): string => realpathSync.native("/tmp") + "/" + name;
+
+    it("setCellFormula delegates the resolved path and cell reference", () => {
+      mockedAppleScript.setFormula.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        cell: "B3",
+        formula: "=SUM(A1:A2)",
+        computedValue: "3",
+      });
+
+      const result = manager.setCellFormula("/tmp/test.numbers", "S", "T", 2, 1, "=SUM(A1:A2)");
+
+      expect(mockedAppleScript.setFormula).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        2,
+        1,
+        "=SUM(A1:A2)"
+      );
+      expect(result.computedValue).toBe("3");
+    });
+
+    it("setCellFormulasBatch delegates the whole formula list", () => {
+      const formulas = [{ row: 0, col: 0, formula: "=1+1" }];
+      mockedAppleScript.setFormulasBatch.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        cellsSet: 1,
+      });
+
+      const result = manager.setCellFormulasBatch("/tmp/test.numbers", "S", "T", formulas);
+
+      expect(mockedAppleScript.setFormulasBatch).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        formulas
+      );
+      expect(result.cellsSet).toBe(1);
+    });
+
+    it("setCellStyle delegates the style object unchanged", () => {
+      const style = { fontName: "Helvetica", fontSize: 14 };
+      mockedAppleScript.setCellStyle.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        cell: "A1",
+      });
+
+      const result = manager.setCellStyle("/tmp/test.numbers", "S", "T", 0, 0, style);
+
+      expect(mockedAppleScript.setCellStyle).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        0,
+        0,
+        style
+      );
+      expect(result.cell).toBe("A1");
+    });
+
+    it("setCellsStyleBatch delegates the entry list", () => {
+      const entries = [{ row: 1, col: 1, style: { fontSize: 10 } }];
+      mockedAppleScript.setCellsStyleBatch.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        cellsStyled: 1,
+      });
+
+      const result = manager.setCellsStyleBatch("/tmp/test.numbers", "S", "T", entries);
+
+      expect(mockedAppleScript.setCellsStyleBatch).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        entries
+      );
+      expect(result.cellsStyled).toBe(1);
+    });
+
+    it("setColumnWidth delegates column index and width", () => {
+      mockedAppleScript.setColumnWidth.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+      });
+
+      const result = manager.setColumnWidth("/tmp/test.numbers", "S", "T", 2, 120);
+
+      expect(mockedAppleScript.setColumnWidth).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        2,
+        120
+      );
+      expect(result.tableName).toBe("T");
+    });
+
+    it("setRowHeight delegates row index and height", () => {
+      mockedAppleScript.setRowHeight.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+      });
+
+      const result = manager.setRowHeight("/tmp/test.numbers", "S", "T", 4, 30);
+
+      expect(mockedAppleScript.setRowHeight).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        4,
+        30
+      );
+      expect(result.sheetName).toBe("S");
+    });
+
+    it("mergeCells delegates the full range", () => {
+      mockedAppleScript.mergeCells.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        range: "A1:C3",
+      });
+
+      const result = manager.mergeCells("/tmp/test.numbers", "S", "T", 0, 0, 2, 2);
+
+      expect(mockedAppleScript.mergeCells).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        0,
+        0,
+        2,
+        2
+      );
+      expect(result.range).toBe("A1:C3");
+    });
+
+    it("unmergeCells delegates the full range", () => {
+      mockedAppleScript.unmergeCells.mockReturnValue({
+        path: "/tmp/test.numbers",
+        sheetName: "S",
+        tableName: "T",
+        range: "A1:C3",
+      });
+
+      const result = manager.unmergeCells("/tmp/test.numbers", "S", "T", 0, 0, 2, 2);
+
+      expect(mockedAppleScript.unmergeCells).toHaveBeenCalledWith(
+        resolvedTmp("test.numbers"),
+        "S",
+        "T",
+        0,
+        0,
+        2,
+        2
+      );
+      expect(result.range).toBe("A1:C3");
+    });
+
+    it("refuses a file outside the allowed roots before reaching osascript", () => {
+      expect(() => manager.setCellFormula("/etc/secrets.numbers", "S", "T", 0, 0, "=1")).toThrow(
+        /outside the allowed roots/
+      );
+      expect(mockedAppleScript.setFormula).not.toHaveBeenCalled();
+    });
+
+    it("refuses a missing file before reaching osascript", () => {
+      mockedExistsSync.mockReturnValue(false);
+      expect(() => manager.mergeCells("/tmp/gone.numbers", "S", "T", 0, 0, 1, 1)).toThrow(
+        "File not found"
+      );
+      expect(mockedAppleScript.mergeCells).not.toHaveBeenCalled();
     });
   });
 });

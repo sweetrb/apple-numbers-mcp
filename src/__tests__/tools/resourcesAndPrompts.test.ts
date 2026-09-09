@@ -97,6 +97,47 @@ describe("registerResourcesAndPrompts", () => {
     expect(JSON.parse(out.contents[0].text).error).toContain("not found");
   });
 
+  // The `table` resource's catch had never been driven at all, and neither
+  // resource had exercised the String(err) side of its ternary. A thrown
+  // non-Error (a rejected string, a plain object) is exactly what would reach
+  // "[object Object]" or an empty error field if that branch were wrong.
+  it("the table resource returns a JSON error payload instead of throwing", () => {
+    const server = fakeServer();
+    registerResourcesAndPrompts(
+      server as never,
+      mockManager({
+        readTable: () => {
+          throw new Error("Not a Numbers file: /tmp/x.xlsx");
+        },
+      })
+    );
+    const out = server.resources.get("table")!(new URL("numbers://table/x.xlsx"), {
+      path: "x.xlsx",
+    }) as { contents: { text: string }[] };
+    expect(JSON.parse(out.contents[0].text).error).toBe("Not a Numbers file: /tmp/x.xlsx");
+  });
+
+  it.each([
+    ["file-info", "getFileInfo"],
+    ["table", "readTable"],
+  ])("the %s resource stringifies a thrown non-Error", (resource, method) => {
+    const server = fakeServer();
+    registerResourcesAndPrompts(
+      server as never,
+      mockManager({
+        [method]: () => {
+          // Deliberately not an Error: the ternary's other arm is what turns a
+          // bare thrown value into a readable message.
+          throw "sidecar died";
+        },
+      })
+    );
+    const out = server.resources.get(resource)!(new URL(`numbers://${resource}/x.numbers`), {
+      path: "x.numbers",
+    }) as { contents: { text: string }[] };
+    expect(JSON.parse(out.contents[0].text).error).toBe("sidecar died");
+  });
+
   it("prompts produce a user message referencing their inputs", () => {
     const server = fakeServer();
     registerResourcesAndPrompts(server as never, mockManager());

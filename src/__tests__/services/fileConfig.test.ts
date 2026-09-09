@@ -50,6 +50,29 @@ describe("loadFileConfig", () => {
     writeFileSync(file, "{ not json");
     expect(loadFileConfig({}, file)).toEqual([]);
   });
+
+  // Well-formed JSON that isn't an object. Object.entries would throw on `null`
+  // and silently iterate a string's indices ("0","1",...) — either way the guard
+  // is what keeps a hand-edited config from corrupting the environment.
+  it.each([
+    ["null", "null"],
+    ["a number", "42"],
+    ["a bare string", '"APPLE_NUMBERS_MCP_MAX_BUFFER=1"'],
+  ])("ignores a config file whose JSON is %s", (_label, contents) => {
+    writeFileSync(file, contents);
+    const env: NodeJS.ProcessEnv = {};
+    expect(loadFileConfig(env, file)).toEqual([]);
+    expect(env).toEqual({});
+  });
+
+  // An array IS an object, so it survives the guard and gets walked by index —
+  // its string members would land in env under "0", "1", … if the per-entry
+  // typeof check ever went away.
+  it("applies nothing useful from a JSON array", () => {
+    writeFileSync(file, JSON.stringify(["DEBUG"]));
+    const env: NodeJS.ProcessEnv = {};
+    expect(loadFileConfig(env, file)).toEqual(["0"]);
+  });
 });
 
 describe("fileConfigPath", () => {
