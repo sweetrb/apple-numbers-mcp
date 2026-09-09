@@ -32,10 +32,22 @@ export default defineConfig({
         // apple-photos-mcp / apple-notes-mcp standard. Floors sit a few points
         // below the measured coverage so routine changes don't trip CI.
         //
-        // Measured (vitest run --coverage):
-        //   services: stmts 78.77 / branch 77.58 / funcs 73.33 / lines 78.77
-        //   tools:    stmts 95.48 / branch 92.68 / funcs 100.0 / lines 95.48
-        //   utils:    stmts 96.83 / branch 93.44 / funcs 96.00 / lines 96.83
+        // Measured (vitest run --coverage), under vitest 4:
+        //   services: stmts 81.61 / branch 72.26 / funcs 74.19 / lines 90.30
+        //   tools:    stmts 97.36 / branch 92.10 / funcs 100.0 / lines 97.01
+        //   utils:    stmts 86.97 / branch 76.44 / funcs 88.88 / lines 88.20
+        //
+        // Those numbers are NOT comparable to the vitest 3 ones they replace
+        // (services 78.77/77.58/73.33/78.77, tools 95.48/92.68/100/95.48,
+        // utils 96.83/93.44/96.00/96.83). vitest 4's coverage-v8 provider
+        // remaps V8 ranges through the source AST by default
+        // (ast-v8-to-istanbul), where vitest 3 remapped them through source
+        // maps alone and credited whole statements it could not actually
+        // resolve. The tests, and the code they execute, are unchanged; only
+        // the accounting is. Branch and function figures moved most (utils
+        // branch 93.44 -> 76.44), so the floors below were re-derived from the
+        // new measurement rather than carried over — a stale floor here would
+        // either fail CI on an unchanged suite or, worse, stop meaning anything.
         //
         // tools/ is now fully unit-tested (respond + resourcesAndPrompts +
         // doctor), so its floors sit in the 90s. utils/ is now fully unit-tested
@@ -49,9 +61,9 @@ export default defineConfig({
         // validated live, not in unit tests — it is intentionally disabled under
         // VITEST so the suite never spawns a real install — so the utils floor
         // accounts for those few uncovered lines.
-        "src/services/**/*.ts": { statements: 75, branches: 72, functions: 68, lines: 75 },
-        "src/tools/**/*.ts": { statements: 90, branches: 85, functions: 95, lines: 90 },
-        "src/utils/**/*.ts": { statements: 80, branches: 80, functions: 82, lines: 80 },
+        "src/services/**/*.ts": { statements: 77, branches: 66, functions: 69, lines: 85 },
+        "src/tools/**/*.ts": { statements: 92, branches: 86, functions: 95, lines: 92 },
+        "src/utils/**/*.ts": { statements: 82, branches: 70, functions: 83, lines: 83 },
       },
     },
   },
