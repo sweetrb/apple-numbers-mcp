@@ -2985,7 +2985,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve3.call(this, root, ref);
+      let _sch = resolve2.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3012,7 +3012,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve3(root, ref) {
+    function resolve2(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3837,7 +3837,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve3(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -4199,7 +4199,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve3,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -19295,7 +19295,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19312,7 +19312,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19390,7 +19390,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve3(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19651,12 +19651,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve3, interval);
+      const timeoutId = setTimeout(resolve2, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20969,7 +20969,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
+      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21657,12 +21657,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve3) => {
+    return new Promise((resolve2) => {
       const json2 = serializeMessage(message);
       if (this._stdout.write(json2)) {
-        resolve3();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve3);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
@@ -22084,7 +22084,7 @@ function unmergeCells(filePath, sheet, table, startRow, startCol, endRow, endCol
 }
 
 // src/services/numbersManager.ts
-import { existsSync as existsSync3 } from "node:fs";
+import { existsSync as existsSync2 } from "node:fs";
 import { extname } from "node:path";
 
 // src/utils/exportPath.ts
@@ -22215,7 +22215,7 @@ var NumbersManager = class {
    */
   validatePath(filePath) {
     const resolved = resolveWithinAllowedRoots(filePath, "Input path");
-    if (!existsSync3(resolved)) {
+    if (!existsSync2(resolved)) {
       throw new Error(`File not found: ${resolved}`);
     }
     if (extname(resolved).toLowerCase() !== ".numbers") {
@@ -22408,7 +22408,7 @@ var NumbersManager = class {
    */
   importFile(inputPath, outputPath, options) {
     const inputResolved = this.resolveReadPath(inputPath);
-    if (!existsSync3(inputResolved)) {
+    if (!existsSync2(inputResolved)) {
       throw new Error(`Input file not found: ${inputResolved}`);
     }
     const outputResolved = this.validateOutputPath(outputPath);
@@ -22546,7 +22546,7 @@ function withErrorHandling(handler, prefix) {
 
 // src/tools/doctor.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync4 } from "node:fs";
+import { existsSync as existsSync3 } from "node:fs";
 var NUMBERS_APP_PATHS = [
   "/Applications/Numbers.app",
   "/System/Applications/Numbers.app",
@@ -22555,7 +22555,7 @@ var NUMBERS_APP_PATHS = [
 ];
 var NUMBERS_BUNDLE_IDS = ["com.apple.Numbers", "com.apple.iWork.Numbers"];
 function findNumbersApp() {
-  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync4(p));
+  const byPath = NUMBERS_APP_PATHS.find((p) => existsSync3(p));
   if (byPath) return byPath;
   for (const id of NUMBERS_BUNDLE_IDS) {
     try {
@@ -22565,7 +22565,7 @@ function findNumbersApp() {
         { encoding: "utf8", timeout: 5e3, stdio: ["ignore", "pipe", "ignore"] }
       ).trim();
       const path = out.endsWith("/") ? out.slice(0, -1) : out;
-      if (path && existsSync4(path)) return path;
+      if (path && existsSync3(path)) return path;
     } catch {
     }
   }
@@ -22742,7 +22742,7 @@ First use get-file-info and read-table to read the relevant table(s) so you know
 }
 
 // src/services/fileConfig.ts
-import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 function fileConfigPath(env = process.env) {
@@ -22753,7 +22753,7 @@ function fileConfigPath(env = process.env) {
 function loadFileConfig(env = process.env, path = fileConfigPath(env)) {
   const applied = [];
   try {
-    if (!existsSync5(path)) return applied;
+    if (!existsSync4(path)) return applied;
     const parsed = JSON.parse(readFileSync2(path, "utf8"));
     if (!parsed || typeof parsed !== "object") return applied;
     for (const [k, v] of Object.entries(parsed)) {

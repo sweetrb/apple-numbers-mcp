@@ -35,8 +35,7 @@ import type {
   RenameResult,
 } from "../types.js";
 import { existsSync } from "node:fs";
-import { resolve, extname } from "node:path";
-import { homedir } from "node:os";
+import { extname } from "node:path";
 import { resolveWithinAllowedRoots } from "../utils/exportPath.js";
 
 export class NumbersManager {
