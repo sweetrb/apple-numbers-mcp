@@ -7,8 +7,9 @@
  * which the policy ALLOWS, so a test that is meant to reach the boundary check
  * is not short-circuited by an earlier failure.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -22,6 +23,7 @@ import { basename, join } from "node:path";
 import {
   ALLOWED_EXPORT_ROOTS,
   ALLOWED_EXPORT_ROOTS_TEXT,
+  EXTRA_ROOTS_ENV,
   isPathWithinAllowedRoots,
   canonicalizeCandidate,
   expandTilde,
@@ -232,5 +234,185 @@ describe("dangling symlinks and the segment boundary (adversarial round 2)", () 
     // there is, and what this repo's own fixtures use.
     const f = join(tmpdir(), "np-ok.csv");
     expect(() => resolveWithinAllowedRoots(f, "Output path")).not.toThrow();
+  });
+});
+
+/**
+ * The opt-in extra roots. Nothing set APPLE_NUMBERS_MCP_EXTRA_ROOTS, so the
+ * whole parser — the split/trim/filter pipeline and both of its predicates —
+ * was dead in the coverage report while shipping as the documented escape
+ * hatch for an unusual layout.
+ */
+describe("APPLE_NUMBERS_MCP_EXTRA_ROOTS", () => {
+  // Deliberately a location the built-in roots do NOT cover, so a path under it
+  // can only be admitted by the extra-roots parser. It need not exist:
+  // isPathWithinAllowedRoots compares canonicalized strings, and a root that
+  // cannot be canonicalized is still kept in its literal form.
+  const extraRoot = "/opt/numbers-fixtures";
+  let prev: string | undefined;
+
+  beforeEach(() => {
+    prev = process.env[EXTRA_ROOTS_ENV];
+  });
+
+  afterEach(() => {
+    if (prev === undefined) delete process.env[EXTRA_ROOTS_ENV];
+    else process.env[EXTRA_ROOTS_ENV] = prev;
+  });
+
+  it("admits a path under a configured extra root", () => {
+    process.env[EXTRA_ROOTS_ENV] = extraRoot;
+    expect(isPathWithinAllowedRoots(`${extraRoot}/data/book.numbers`)).toBe(true);
+    // and the root itself
+    expect(isPathWithinAllowedRoots(extraRoot)).toBe(true);
+  });
+
+  it("does not admit a sibling that merely shares the extra root's prefix", () => {
+    process.env[EXTRA_ROOTS_ENV] = extraRoot;
+    expect(isPathWithinAllowedRoots(`${extraRoot}-evil/book.numbers`)).toBe(false);
+  });
+
+  it("splits on ':' and trims surrounding whitespace", () => {
+    process.env[EXTRA_ROOTS_ENV] = ` ${extraRoot} : /opt/second `;
+    expect(isPathWithinAllowedRoots(`${extraRoot}/a`)).toBe(true);
+    expect(isPathWithinAllowedRoots("/opt/second/a")).toBe(true);
+  });
+
+  // A relative or empty entry must be dropped, not resolved against the
+  // process cwd — that would widen the boundary to wherever the server happens
+  // to have been started.
+  it.each([
+    ["an empty entry", "::", "/"],
+    ["a relative entry", "relative/dir", "relative/dir"],
+    ["a bare dot", ".", "."],
+  ])("ignores %s", (_label, value, probe) => {
+    process.env[EXTRA_ROOTS_ENV] = value;
+    // Nothing new is admitted: the probe is judged only by the built-in roots.
+    expect(isPathWithinAllowedRoots(probe)).toBe(false);
+  });
+
+  it("ignores the variable entirely when it is empty", () => {
+    process.env[EXTRA_ROOTS_ENV] = "";
+    expect(isPathWithinAllowedRoots("/opt/anything")).toBe(false);
+  });
+
+  // A root written with a trailing separator names the same directory; the
+  // boundary strips it before comparing, so "/opt/x/" must not turn every
+  // sibling of /opt/x into a match (nor stop /opt/x itself from matching).
+  it("normalizes a trailing separator on an extra root", () => {
+    process.env[EXTRA_ROOTS_ENV] = `${extraRoot}/`;
+    expect(isPathWithinAllowedRoots(extraRoot)).toBe(true);
+    expect(isPathWithinAllowedRoots(`${extraRoot}/book.numbers`)).toBe(true);
+    expect(isPathWithinAllowedRoots(`${extraRoot}-evil/book.numbers`)).toBe(false);
+  });
+});
+
+describe("canonicalizeCandidate edge cases", () => {
+  it("stops walking up at a component that is a FILE, not a directory", () => {
+    // lstat of "<regular file>/child" fails with ENOTDIR, not ENOENT. Both mean
+    // "not present" for the walk; anything else (EACCES) must stop it instead.
+    const file = join(tmpRoot, "plain.csv");
+    writeFileSync(file, "a,b\n");
+    const through = join(file, "child.csv");
+    expect(canonicalizeCandidate(through)).toBe(
+      join(realpathSync.native(tmpRoot), "plain.csv", "child.csv")
+    );
+  });
+
+  it("resolves a DANGLING symlink that is itself the whole path", () => {
+    // No trailing components: the link IS the candidate, so the resolved target
+    // is returned directly rather than having a tail re-appended to it.
+    const link = join(tmpRoot, "dangling-leaf.numbers");
+    symlinkSync("/private/tmp/np-not-created-yet.numbers", link);
+    expect(canonicalizeCandidate(link)).toBe("/private/tmp/np-not-created-yet.numbers");
+  });
+
+  it("terminates on a symlink CYCLE instead of spinning on it", () => {
+    // a -> b -> a, both with RELATIVE targets so each hop is resolved by hand
+    // against the link's parent. realpath throws ELOOP, so the hand-resolution
+    // path takes over and would recurse forever without the depth cap. The cap
+    // fires inside resolveDanglingLink's own try, so the caller does not see
+    // "Too many symbolic links" — the walk simply gives up and hands back the
+    // literal path, which is what the boundary check then judges. A cycle must
+    // therefore still be unable to escape the roots.
+    const a = join(tmpRoot, "loop-a");
+    const b = join(tmpRoot, "loop-b");
+    symlinkSync("loop-b", a);
+    symlinkSync("loop-a", b);
+
+    const resolved = canonicalizeCandidate(a);
+
+    expect(resolved).toBe(join(realpathSync.native(tmpRoot), "loop-a"));
+    expect(isPathWithinAllowedRoots(resolved)).toBe(true);
+    expect(() => resolveWithinAllowedRoots(a, "Output path")).not.toThrow();
+  });
+
+  it("does not let a symlink cycle under an allowed root reach outside it", () => {
+    // Same cycle, but the first hop points at /etc. The cycle must not become a
+    // way to launder an out-of-roots destination past the check.
+    const dir = join(tmpRoot, "cycle-escape");
+    mkdirSync(dir);
+    const a = join(dir, "a");
+    const b = join(dir, "b");
+    symlinkSync("/etc/hosts", b);
+    symlinkSync("b", a);
+    expect(() => resolveWithinAllowedRoots(a, "Input path")).toThrow(/outside the allowed roots/);
+  });
+
+  // A path that lstat can see but realpath refuses, and which is NOT a symlink,
+  // must fall back to the literal path so the boundary check still runs against
+  // something real rather than walking past it.
+  it("falls back to the literal path when canonicalization is refused", () => {
+    if (process.getuid?.() === 0) return; // root traverses regardless of mode
+    const locked = join(tmpRoot, "locked");
+    const inner = join(locked, "book.numbers");
+    mkdirSync(locked);
+    writeFileSync(inner, "");
+    chmodSync(locked, 0o000);
+    try {
+      // lstat(inner) -> EACCES, which entryPresent treats as PRESENT; realpath
+      // then fails too, and there is no symlink to resolve by hand.
+      expect(canonicalizeCandidate(inner)).toBe(inner);
+    } finally {
+      chmodSync(locked, 0o700);
+    }
+  });
+});
+
+/**
+ * The walk-up's termination guard.
+ *
+ * `canonicalizeCandidate` climbs toward the root while nothing on the path is
+ * present. On a working filesystem "/" always lstats, so the loop always stops
+ * on something real and `parent === existing` never fires — which left the only
+ * thing standing between a pathological filesystem and an infinite loop
+ * untested. This is the one place in this file that mocks fs, and it mocks
+ * exactly one call: `lstatSync`, so that NOTHING (not even "/") reads as
+ * present. realpath stays real.
+ */
+describe("walk-up termination", () => {
+  it("stops at the filesystem root instead of looping when nothing is present", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        lstatSync: () => {
+          const e = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+          e.code = "ENOENT";
+          throw e;
+        },
+      };
+    });
+
+    try {
+      const fresh = await import("../../utils/exportPath.js");
+      // Every component walks up to "/", where dirname("/") === "/" ends it.
+      // The path is then reassembled from the real root plus the whole tail.
+      expect(fresh.canonicalizeCandidate("/a/b/c.numbers")).toBe("/a/b/c.numbers");
+    } finally {
+      vi.doUnmock("node:fs");
+      vi.resetModules();
+    }
   });
 });

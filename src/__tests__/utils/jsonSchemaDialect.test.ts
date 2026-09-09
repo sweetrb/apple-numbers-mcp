@@ -422,6 +422,58 @@ describe("toJsonSchema2020_12 — position awareness", () => {
   });
 });
 
+// The three guards that keep a malformed schema from crashing the transport.
+// Every existing test feeds well-formed input, so each guard's reject arm was
+// unexercised — and the transport wrapper runs on EVERY outgoing message, so a
+// throw here takes the whole server down rather than one tool call.
+describe("malformed input passes through instead of throwing", () => {
+  it("leaves a schema-map keyword whose value is not an object alone", () => {
+    // `properties` is normally a name -> schema map. A scalar there is invalid
+    // JSON Schema, but it must survive verbatim rather than blow up the walk.
+    expect(convert({ type: "object", properties: "nope" })).toMatchObject({
+      properties: "nope",
+    });
+    expect(convert({ type: "object", $defs: 42 })).toMatchObject({ $defs: 42 });
+    expect(convert({ type: "object", patternProperties: null })).toMatchObject({
+      patternProperties: null,
+    });
+  });
+
+  it("drops a `dependencies` value that is not an object without splitting it", () => {
+    // draft-07 `dependencies` splits into dependentRequired/dependentSchemas.
+    // A non-object has nothing to split, so neither replacement keyword appears
+    // — and the invalid original must not be carried through either.
+    const out = convert({ type: "object", dependencies: "nope" });
+    expect(out).not.toHaveProperty("dependencies");
+    expect(out).not.toHaveProperty("dependentRequired");
+    expect(out).not.toHaveProperty("dependentSchemas");
+  });
+
+  it("leaves a tool whose schemas are missing or non-object untouched", () => {
+    const message = {
+      jsonrpc: "2.0" as const,
+      id: 1,
+      result: {
+        tools: [
+          { name: "no-schemas" },
+          { name: "scalar-schemas", inputSchema: "nope", outputSchema: 7 },
+        ],
+      },
+    };
+
+    const normalized = normalizeOutgoingMessage(message) as {
+      result: { tools: JsonObject[] };
+    };
+
+    expect(normalized.result.tools[0]).toEqual({ name: "no-schemas" });
+    expect(normalized.result.tools[1]).toEqual({
+      name: "scalar-schemas",
+      inputSchema: "nope",
+      outputSchema: 7,
+    });
+  });
+});
+
 describe("normalizeOutgoingMessage", () => {
   const toolsListResult = () => ({
     jsonrpc: "2.0",
