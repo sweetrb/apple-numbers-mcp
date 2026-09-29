@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [1.2.4] - 2026-09-29
+
+### Security
+
+- **`fast-uri` 3.1.6 → 3.1.8, clearing GHSA-58mr-gqgx-xq4g (high) — in the shipped bundle.** `fast-uri` reaches the published package via `@modelcontextprotocol/sdk` → `ajv`/`ajv-formats`, and esbuild inlines its source into `build/index.js`, so the committed bundle carried the vulnerable copy. Patched in 3.1.7. `pnpm-workspace.yaml`'s override is rewritten from the bare caret `^3.1.6` to the explicit two-sided range `>=3.1.7 <4`, aligning with the convention already used by `apple-mail-mcp`/`apple-notes-mcp` and by this file's own `brace-expansion`/`hono`/`js-yaml`/`qs` entries — a caret on a `>=1.0.0` package does bound the major the same way, but states it implicitly.
+- **`ip-address` 10.4.0 → 10.7.2, clearing GHSA-2vr4-cq9g-pvrc (medium) — dev/install-tree only, not in the shipped bundle.** `isCorrect()` accepted non-canonical zero-padded octets, an ambiguity that lets an IP-based ACL be bypassed elsewhere in a consuming tree. Patched in 10.5.1. Reached via `@modelcontextprotocol/sdk` → `express`; the HTTP transports are tree-shaken out of the stdio server, so this is install-tree hygiene rather than a runtime exposure. `pnpm-workspace.yaml`'s override is raised from `^10.3.1` to the explicit two-sided range `>=10.5.1 <11`.
+
 ## [1.2.3] - 2026-09-09
 
 ### Changed
