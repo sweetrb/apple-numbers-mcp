@@ -37,9 +37,16 @@ overrides:
   # The bounds must be two-sided. A bare "<5.0.9" also matches 1.1.18 and
   # 2.1.4 under semver, and would force minimatch 3's CommonJS path onto the
   # v5 ESM API ("expand is not a function").
-  "brace-expansion@>=1.0.0 <1.1.18": 1.1.18
+  #
+  # 2026-09-30: raised the 1.x and 5.x floors again for GHSA-q2hr-2g5m-vwhr
+  # (medium), fixed in 1.1.21 and 5.0.12 -- a further incomplete-fix variant
+  # of the same brace-expansion class described above. Per the advisory data,
+  # only the 1.x and 5.x lines were reported vulnerable; the 2.x floor is
+  # left untouched. Same reachability and same conclusion as above: dev
+  # toolchain only, not in the shipped bundle.
+  "brace-expansion@>=1.0.0 <1.1.21": 1.1.21
   "brace-expansion@>=2.0.0 <2.1.4": 2.1.4
-  "brace-expansion@>=5.0.0 <5.0.9": 5.0.9
+  "brace-expansion@>=5.0.0 <5.0.12": 5.0.12
   # GHSA-7p8r-x3mc-p8w7 (high): fast-uri URI parsing. Patched in 3.1.5.
   # GHSA-5jgf-p345-68v8 (high, host confusion via skipped IDN canonicalization)
   # and GHSA-fph4-wmhf-6fwf (high, SSRF via repeated hostname percent-decoding)

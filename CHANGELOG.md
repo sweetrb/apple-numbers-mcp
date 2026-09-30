@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.2.5] - 2026-09-30
+
+### Security
+
+- **`brace-expansion` 1.1.18 → 1.1.21 and 5.0.9 → 5.0.12, clearing GHSA-q2hr-2g5m-vwhr (medium) — dev toolchain only, not in the shipped bundle.** A further incomplete-fix variant of the same unbounded-expansion class as GHSA-mh99-v99m-4gvg (see 1.2.0). Per the advisory's reported ranges, only the 1.x and 5.x lines were vulnerable; the 2.x floor (2.1.4) is untouched. Reached via eslint → minimatch on both lines, so development scope only. `pnpm-workspace.yaml`'s two-sided override ranges are raised accordingly. Clears Dependabot alerts #33 and #32.
+
 ## [1.2.4] - 2026-09-29
 
 ### Security
