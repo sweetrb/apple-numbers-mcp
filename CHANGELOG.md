@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.2.7] - 2026-10-07
+
+### Security
+
+- **`source-map-js` 1.2.1 → 1.2.2, clearing a high-severity advisory (Dependabot alert #35) — dev toolchain only, not in the shipped bundle.** Reached via vitest/vite → postcss, so development scope only. Patched in 1.2.2 (published 2026-09-30, past the 7-day `minimumReleaseAge` soak; no `minimumReleaseAgeExclude` carve-out). `pnpm-workspace.yaml` gains the two-sided override `>=1.2.2 <2`. The committed bundle is unchanged.
+
 ## [1.2.6] - 2026-10-07
 ### Changed
 - Dependency bump via Dependabot; committed bundle rebuilt. (automated)
