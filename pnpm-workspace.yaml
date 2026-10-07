@@ -121,6 +121,7 @@ overrides:
   qs: ^6.16.0
   # GHSA (high, Dependabot alert #35): source-map-js, patched in 1.2.2
   # (published 2026-09-30T14:08Z, past the 7-day soak above). Reached only via
-  # the dev toolchain (typescript-eslint tooling); not in the shipped
-  # build/index.js bundle. Two-sided range, for the reason recorded on fast-uri.
+  # the test toolchain (vitest -> vite -> postcss, and @vitest/coverage-v8 ->
+  # magicast); not in the shipped build/index.js bundle. Two-sided range, for
+  # the reason recorded on fast-uri.
   "source-map-js": ">=1.2.2 <2"
