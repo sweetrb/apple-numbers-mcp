@@ -119,3 +119,8 @@ overrides:
   # until 2026-09-05T23:50:15Z; floored here now that it has cleared, as a
   # caret range, never an exact pin, for the reason recorded on fast-uri above.
   qs: ^6.16.0
+  # GHSA (high, Dependabot alert #35): source-map-js, patched in 1.2.2
+  # (published 2026-09-30T14:08Z, past the 7-day soak above). Reached only via
+  # the dev toolchain (typescript-eslint tooling); not in the shipped
+  # build/index.js bundle. Two-sided range, for the reason recorded on fast-uri.
+  "source-map-js": ">=1.2.2 <2"
