@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [1.2.9] - 2026-10-21
+### Changed
+- `numbers-parser` 4.19.0 → 4.21.0 (Dependabot pip group, PR #103). Requires a
+  human-added version bump since Dependabot can't bump this repo's version for
+  a `requirements.txt`-only change. Verified against real data post-upgrade
+  (`numbers_reader.py info` on a live `.numbers` file — clean JSON, no
+  stack trace).
+
 ## [1.2.8] - 2026-10-14
 ### Changed
 - Dependency bump via Dependabot; committed bundle rebuilt. (automated)
