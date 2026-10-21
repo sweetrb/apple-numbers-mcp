@@ -125,3 +125,10 @@ overrides:
   # magicast); not in the shipped build/index.js bundle. Two-sided range, for
   # the reason recorded on fast-uri.
   "source-map-js": ">=1.2.2 <2"
+  # Dependabot alerts #36 (GHSA-698v-4r3x-3vcv, medium), #37
+  # (GHSA-587h-7wmj-h5pm, high) and #38 (GHSA-r825-w8mm-5pxw, medium), all
+  # patched in 7.3.7 (published 2026-10-06, past the 7-day soak above).
+  # Reached only via the test toolchain (vitest -> vite); not in the shipped
+  # build/index.js bundle. Two-sided range, for the reason recorded on
+  # fast-uri.
+  vite: ">=7.3.7 <8"
