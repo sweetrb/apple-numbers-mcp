@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.2.10] - 2026-10-21
+
+### Security
+
+- **`vite` 7.3.6 → 7.3.7, clearing Dependabot alerts #36 (GHSA-698v-4r3x-3vcv, medium), #37 (GHSA-587h-7wmj-h5pm, high) and #38 (GHSA-r825-w8mm-5pxw, medium) — dev toolchain only, not in the shipped bundle.** Reached via vitest → vite; the shipped `build/index.js` contains no reference to vite. Patched in 7.3.7 (published 2026-10-06, past the 7-day `minimumReleaseAge` soak). `pnpm-workspace.yaml` gains the two-sided override `>=7.3.7 <8`, matching the convention used by this file's other entries (`fast-uri`/`ip-address`/`hono`/`source-map-js`).
+
 ## [1.2.9] - 2026-10-21
 ### Changed
 - `numbers-parser` 4.19.0 → 4.21.0 (Dependabot pip group, PR #103). Requires a
