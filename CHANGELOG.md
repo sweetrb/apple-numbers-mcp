@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [1.2.11] - 2026-10-23
+
+### Security
+
+- **`zod` `^3.22.4` → `^4.6.6` (locks 4.6.7), addressing GHSA-mrhx-c7xc-m3w5 (high): zod < 4.6.6 can exhaust memory validating oversized constrained collections.** zod is in the shipped `build/index.js` bundle and validates every tool call. The advertised `tools/list` contract is preserved: tools now register through `registerToolWithContracts` (`src/utils/toolRegistration.ts`), which re-applies Zod 3's `additionalProperties: false` on input objects and keeps output roots permissive, and row/column/color indices use `integerNumber()` so they still advertise `type: "integer"` with the same bounds. Diffed against the 1.2.10 build, every tool's inputSchema, outputSchema, description and annotations are identical except one `$ref` (`backgroundColor` → `textColor` in the two style tools) now inlined as an identical definition. Invalid inputs are still rejected with -32602; only the Zod-generated message wording changed. Approach ported from sweetrb/apple-mail-mcp #326/#327 (@jjoanna2-debug).
+- **`vitest` / `@vitest/coverage-v8` `^4.1.11` → `^4.1.12`, clearing `@vitest/mocker` < 4.1.12 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp, moderate). Dev toolchain only, not in the shipped bundle.** `@vitest/mocker` is an exact dependency of vitest, so the fix is a direct devDependency raise rather than an override (same as apple-mail-mcp 2.20.28).
+
 ## [1.2.10] - 2026-10-21
 
 ### Security
