@@ -17,6 +17,7 @@ import { registerResourcesAndPrompts } from "./tools/resourcesAndPrompts.js";
 import { loadFileConfig } from "./services/fileConfig.js";
 import { ALLOWED_EXPORT_ROOTS_TEXT, EXTRA_ROOTS_ENV } from "./utils/exportPath.js";
 import { withJsonSchema2020_12 } from "./utils/jsonSchemaDialect.js";
+import { integerNumber, registerToolWithContracts } from "./utils/toolRegistration.js";
 
 // Load file-based config FIRST — before anything reads APPLE_NUMBERS_MCP_* env
 // vars — so settings survive a host that strips the MCP env block.
@@ -72,30 +73,9 @@ const server = new McpServer({
     "via Numbers.app, write live formulas, cell styling, column/row dimensions, and merges.",
 });
 
-// health-check
-/**
- * Register a tool, advertising its `outputSchema` as PERMISSIVE.
- *
- * The MCP **client** validates a result's `structuredContent` against the JSON
- * Schema the server advertised — not against the server's own zod object. A
- * bare zod raw shape renders as `additionalProperties: false`, so a payload
- * carrying any field the schema didn't enumerate is rejected client-side with
- * `-32602 … data must NOT have additional properties`, discarding a result the
- * handler produced correctly. The server never sees it, because zod's own parse
- * silently *strips* unknown keys rather than failing — which is why the
- * registerTool/outputSchema migration's "all fields optional, no `.strict()`"
- * was believed to be permissive. It covered optionality; it did not cover
- * undeclared keys.
- *
- * `.passthrough()` advertises `additionalProperties: true`, which is the
- * contract that migration intended: a declared field documents the shape, an
- * undeclared one is carried through instead of nuking the whole result. This is
- * not hypothetical — it took down `get-mail-stats` in the sibling
- * apple-mail-mcp (sweetrb/apple-mail-mcp#135), where every tool was likewise
- * advertising `additionalProperties: false` and the one tool whose payload
- * carried an undeclared key failed on every call. Enforced for every tool here
- * by the outputSchema contract test.
- */
+// Every tool registers through registerToolWithContracts, which advertises a
+// permissive outputSchema and keeps the Zod 4 JSON Schema contract-identical to
+// what Zod 3 produced (see src/utils/toolRegistration.ts).
 function registerTool<
   OutputArgs extends z.ZodRawShape,
   InputArgs extends undefined | z.ZodRawShape = undefined,
@@ -110,12 +90,7 @@ function registerTool<
   },
   cb: ToolCallback<InputArgs>
 ): RegisteredTool {
-  const { outputSchema, ...rest } = config;
-  return server.registerTool(
-    name,
-    outputSchema ? { ...rest, outputSchema: z.object(outputSchema).passthrough() } : rest,
-    cb
-  );
+  return registerToolWithContracts(server, name, config, cb);
 }
 
 registerTool(
@@ -240,16 +215,12 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().optional().describe("Sheet name (default: first sheet)"),
       table: z.string().optional().describe("Table name (default: first table)"),
-      startRow: z
-        .number()
-        .int()
+      startRow: integerNumber()
         .min(0)
         .max(MAX_INDEX)
         .optional()
         .describe("Start row index, 0-based inclusive (default: 1, after header)"),
-      endRow: z
-        .number()
-        .int()
+      endRow: integerNumber()
         .min(0)
         .max(MAX_INDEX)
         .optional()
@@ -378,8 +349,8 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       verbose: z.boolean().optional().describe("Include formula/metadata (default: false)"),
     },
     outputSchema: {
@@ -464,8 +435,8 @@ registerTool(
       PATH_BOUNDARY_NOTE,
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       value: z
         .union([z.string(), z.number(), z.boolean(), z.null()])
         .describe(
@@ -512,8 +483,8 @@ registerTool(
       updates: z
         .array(
           z.object({
-            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+            row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             value: z
               .union([z.string(), z.number(), z.boolean(), z.null()])
               .describe(
@@ -600,15 +571,11 @@ registerTool(
       PATH_BOUNDARY_NOTE,
     inputSchema: {
       path: z.string().describe("Path to the .numbers file"),
-      startRow: z
-        .number()
-        .int()
+      startRow: integerNumber()
         .min(0)
         .max(MAX_INDEX)
         .describe("First row to delete (0-based, inclusive)"),
-      endRow: z
-        .number()
-        .int()
+      endRow: integerNumber()
         .min(0)
         .max(MAX_INDEX)
         .describe("Last row to delete (0-based, inclusive)"),
@@ -772,7 +739,7 @@ registerTool(
       updates: z
         .array(
           z.object({
-            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
             values: z
               .array(z.union([z.string(), z.number(), z.boolean(), z.null()]))
               .describe(
@@ -878,8 +845,8 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       formula: z.string().describe('Formula string (e.g., "=SUM(A2:A10)")'),
     },
     outputSchema: {
@@ -918,8 +885,8 @@ registerTool(
       formulas: z
         .array(
           z.object({
-            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+            row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             formula: z.string().describe("Formula string"),
           })
         )
@@ -946,9 +913,9 @@ registerTool(
 // --- Formatting tools (AppleScript, requires Numbers.app) ---
 
 const colorSchema = z.object({
-  red: z.number().int().min(0).max(65535).describe("Red component (0-65535)"),
-  green: z.number().int().min(0).max(65535).describe("Green component (0-65535)"),
-  blue: z.number().int().min(0).max(65535).describe("Blue component (0-65535)"),
+  red: integerNumber().min(0).max(65535).describe("Red component (0-65535)"),
+  green: integerNumber().min(0).max(65535).describe("Green component (0-65535)"),
+  blue: integerNumber().min(0).max(65535).describe("Blue component (0-65535)"),
 });
 
 const cellStyleSchema = z.object({
@@ -998,8 +965,8 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       style: cellStyleSchema.describe("Style properties to set"),
     },
     outputSchema: {
@@ -1035,8 +1002,8 @@ registerTool(
       entries: z
         .array(
           z.object({
-            row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
-            col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+            row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+            col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
             style: cellStyleSchema,
           })
         )
@@ -1074,7 +1041,7 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      col: z.number().int().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
+      col: integerNumber().min(0).max(MAX_INDEX).describe("Column index (0-based)"),
       width: z.number().min(0).max(MAX_DIMENSION).describe("Width in pixels"),
     },
     outputSchema: {
@@ -1111,7 +1078,7 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      row: z.number().int().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
+      row: integerNumber().min(0).max(MAX_INDEX).describe("Row index (0-based)"),
       height: z.number().min(0).max(MAX_DIMENSION).describe("Height in pixels"),
     },
     outputSchema: {
@@ -1148,10 +1115,10 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      startRow: z.number().int().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
-      startCol: z.number().int().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
-      endRow: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
-      endCol: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
+      startRow: integerNumber().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
+      startCol: integerNumber().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
+      endRow: integerNumber().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
+      endCol: integerNumber().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
     },
     outputSchema: {
       path: z.string().optional(),
@@ -1182,10 +1149,10 @@ registerTool(
       path: z.string().describe("Path to the .numbers file"),
       sheet: z.string().describe("Sheet name"),
       table: z.string().describe("Table name"),
-      startRow: z.number().int().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
-      startCol: z.number().int().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
-      endRow: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
-      endCol: z.number().int().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
+      startRow: integerNumber().min(0).max(MAX_INDEX).describe("Top-left row (0-based)"),
+      startCol: integerNumber().min(0).max(MAX_INDEX).describe("Top-left column (0-based)"),
+      endRow: integerNumber().min(0).max(MAX_INDEX).describe("Bottom-right row (0-based)"),
+      endCol: integerNumber().min(0).max(MAX_INDEX).describe("Bottom-right column (0-based)"),
     },
     outputSchema: {
       path: z.string().optional(),
