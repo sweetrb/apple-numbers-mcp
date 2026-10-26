@@ -5,12 +5,14 @@ Thank you for your interest in contributing! This document provides guidelines f
 ## Development Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/sweetrb/apple-numbers-mcp.git
    cd apple-numbers-mcp
    ```
 
 2. **Install dependencies**
+
    ```bash
    pnpm install
    ```
@@ -18,11 +20,13 @@ Thank you for your interest in contributing! This document provides guidelines f
    This repo pins pnpm via `packageManager` in `package.json` — `corepack enable` provides it. Development needs Node >= 22.13 (CI tests on Node 22 and 24); the published server itself runs on Node >= 20.
 
 3. **Set up the Python sidecar** (creates a project-local venv with `numbers-parser`)
+
    ```bash
    pnpm run setup       # requires Python 3.11+ (macOS ships 3.9 — install a newer one)
    ```
 
 4. **Build the project**
+
    ```bash
    pnpm run build
    ```
@@ -54,6 +58,26 @@ All new features should include tests. We use Vitest.
 - The integration suite (`pnpm run test:integration`) generates `.numbers` fixtures and exercises the real `numbers-parser` sidecar.
 - Test both success and failure paths, and edge cases (empty values, special characters, missing sheets/tables).
 - Enforced coverage thresholds run in CI (`pnpm run test:coverage`); keep new code above the floor.
+
+## Before you open a PR
+
+Review time is the bottleneck here, so a few ground rules keep it moving:
+
+- **One open PR at a time per contributor.** Further PRs from the same author
+  wait unreviewed until the current one is merged or closed. A tight series is
+  fine. Land it one PR at a time.
+- **Open an issue first** for anything that changes:
+  - the skill in `skills/`. It ships to every host (Claude, Codex,
+    Antigravity), so a change for one host changes default behaviour for all
+    of them.
+  - a security boundary: allowed path roots, permission or Full Disk Access
+    handling, or any check on what the server may read, write or send.
+
+  Agree the approach in the issue before writing the code.
+
+- **AI-assisted PRs are welcome, and you own the diff.** Green CI is not
+  evidence that a change is right. Say how you verified it against real data,
+  and keep each PR to one concern.
 
 ## Pull Request Process
 
