@@ -1,5 +1,22 @@
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-26
+
+### Changed (behaviour)
+
+- **`export-table`, `create-spreadsheet` and `import-csv` no longer overwrite an existing file
+  by default.** All three used to replace whatever was at the destination path without asking,
+  so a reused or mistyped path could silently destroy a real file, and for the last two that
+  meant a real spreadsheet. An existing destination is now refused with
+  `Output file already exists: <path>. Pass overwrite: true to replace it, or choose a new path.`,
+  and the sidecar never runs. Each tool takes a new optional `overwrite` boolean (default
+  `false`) to replace the file deliberately. A symlink at the destination counts as existing,
+  including a dangling one. The allowed-roots boundary is unchanged: it limits where these tools
+  write, and this check limits what they replace. **Callers that relied on the old overwrite
+  must now pass `overwrite: true`.** That's the reason this is a minor release.
+  Verified live through the Python sidecar: fresh write, refusal, and `overwrite: true` for each
+  of the three tools, with the replaced contents read back.
+
 ## [1.2.11] - 2026-10-23
 
 ### Security

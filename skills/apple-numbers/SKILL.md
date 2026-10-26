@@ -173,6 +173,6 @@ User: "Where does 'overdue' appear in this file?"
 ```
 User: "Turn this CSV into a Numbers spreadsheet"
 -> import-csv inputPath="~/data.csv" outputPath="~/data.numbers"
-   (both paths are required; the output file is created, overwriting any
-    existing file at that path)
+   (both paths are required; an existing output file is refused unless
+    overwrite=true, which needs the user's go-ahead)
 ```

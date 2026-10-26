@@ -303,7 +303,7 @@ Case-insensitive partial match across every cell in a `.numbers` file.
 
 Export a table to CSV, TSV, or JSON.
 
-**⚠️ Safety:** Writes a file to disk at `outputPath`. The path is written unconditionally — any existing file there is **overwritten** — so confirm the destination before calling. Paths are bounded: `outputPath` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
+**⚠️ Safety:** Writes a file to disk at `outputPath`. An existing file there is **refused** unless you pass `overwrite: true` — confirm with the user before passing it. Paths are bounded: `outputPath` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -312,6 +312,7 @@ Export a table to CSV, TSV, or JSON.
 | `outputPath` | string | Yes | Path for the output file |
 | `sheet` | string | No | Sheet name (default: first sheet) |
 | `table` | string | No | Table name (default: first table) |
+| `overwrite` | boolean | No | Replace an existing file at the destination (default: `false` — refused) |
 
 ---
 
@@ -321,7 +322,7 @@ Export a table to CSV, TSV, or JSON.
 
 Create a new `.numbers` file with one sheet and table.
 
-**⚠️ Safety:** Overwrites the file at `path` if it already exists — confirm the destination first. Paths are bounded: `path` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
+**⚠️ Safety:** An existing file at `path` is **refused** unless you pass `overwrite: true` — confirm with the user before passing it. Paths are bounded: `path` must resolve — after `~` expansion and symlink resolution — to a location under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -330,6 +331,7 @@ Create a new `.numbers` file with one sheet and table.
 | `rows` | (string \| number \| boolean \| null)[][] | No | Initial data rows |
 | `sheetName` | string | No | Default: `"Sheet 1"` |
 | `tableName` | string | No | Default: `"Table 1"` |
+| `overwrite` | boolean | No | Replace an existing file at the destination (default: `false` — refused) |
 
 ---
 
@@ -573,7 +575,7 @@ Merge a rectangular range of cells, or undo a merge.
 
 Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet. Auto-detects format from extension, or pass `format` explicitly.
 
-**⚠️ Safety:** Overwrites the file at `outputPath` if it already exists — confirm the destination first. Paths are bounded: both `inputPath` and `outputPath` must resolve — after `~` expansion and symlink resolution — to locations under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
+**⚠️ Safety:** An existing file at `outputPath` is **refused** unless you pass `overwrite: true` — confirm with the user before passing it. Paths are bounded: both `inputPath` and `outputPath` must resolve — after `~` expansion and symlink resolution — to locations under your **home directory**, `/tmp`, `/private/tmp`, or `/Volumes`; anything else is rejected with an error naming those roots.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -582,6 +584,7 @@ Import a CSV, TSV, or JSON file into a new `.numbers` spreadsheet. Auto-detects 
 | `format` | `"auto" \| "csv" \| "tsv" \| "json"` | No | Default: auto-detect from extension |
 | `sheetName` | string | No | Default: `"Sheet 1"` |
 | `tableName` | string | No | Default: `"Table 1"` |
+| `overwrite` | boolean | No | Replace an existing file at the destination (default: `false` — refused) |
 
 **CSV/TSV fields are auto-typed.** Every field from a `csv`/`tsv` source is converted before it is written: `""` → empty cell, `true`/`false` → boolean, and anything Python's `int()`/`float()` parses → number. So a zip code `01234` becomes the number `1234`, `007` becomes `7`, and `1e5` becomes the number `100000`. This is deliberately less conservative than `set-cell`/`add-rows`, which keep leading-zero strings intact, and there is no per-column type control on import. For zero-padded identifiers, import from JSON instead (JSON values are passed through untouched) or repair the column afterwards with `set-cells-batch` using `type: "string"`.
 
