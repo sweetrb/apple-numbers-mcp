@@ -10,11 +10,9 @@
  * Mirrors apple-photos-mcp's utils/exportPath.ts and apple-mail-mcp's
  * ALLOWED_SAVE_ROOTS / isPathWithinAllowedRoots.
  *
- * This is a ROOT boundary only. It deliberately does not change overwrite
- * semantics: every one of these tools documents that an existing file at the
- * target path is overwritten, and the path is caller-supplied rather than
- * attacker-named (unlike an inbound mail attachment's filename), so refusing
- * to overwrite would break documented behaviour without closing this hole.
+ * This is a ROOT boundary only. Overwrite protection — refusing an existing
+ * destination unless the caller passes `overwrite: true` — is a separate check,
+ * NumbersManager.assertWritable, applied after this resolves the path.
  *
  * @module utils/exportPath
  */

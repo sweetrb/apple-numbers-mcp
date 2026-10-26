@@ -34,7 +34,7 @@ import type {
   UpdateRowsResult,
   RenameResult,
 } from "../types.js";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { extname } from "node:path";
 import { resolveWithinAllowedRoots } from "../utils/exportPath.js";
 
@@ -109,6 +109,31 @@ export class NumbersManager {
   }
 
   /**
+   * Refuse to replace an existing file unless the caller opted in.
+   *
+   * `export-table`, `create-spreadsheet` and `import-csv` used to overwrite
+   * whatever was at the destination, so a reused or mistyped path silently
+   * destroyed a real file — for the last two, a real spreadsheet. The roots
+   * boundary limits WHERE they write; this limits WHAT they replace. Checked on
+   * the resolved path with `lstat`, so a dangling symlink also counts as taken.
+   */
+  private assertWritable(resolved: string, overwrite: boolean | undefined): void {
+    if (overwrite) return;
+    let taken = false;
+    try {
+      lstatSync(resolved);
+      taken = true;
+    } catch {
+      // nothing there
+    }
+    if (taken) {
+      throw new Error(
+        `Output file already exists: ${resolved}. Pass overwrite: true to replace it, or choose a new path.`
+      );
+    }
+  }
+
+  /**
    * Get file structure: sheets, tables, dimensions, headers.
    */
   getFileInfo(filePath: string): NumbersFileInfo {
@@ -167,10 +192,12 @@ export class NumbersManager {
     format: "csv" | "json" | "tsv",
     outputPath: string,
     sheet?: string,
-    table?: string
+    table?: string,
+    overwrite?: boolean
   ): ExportResult {
     const resolved = this.validatePath(filePath);
     const outputResolved = this.resolveWritePath(outputPath);
+    this.assertWritable(outputResolved, overwrite);
     const args = [resolved, format, outputResolved];
     if (sheet) args.push("--sheet", sheet);
     if (table) args.push("--table", table);
@@ -204,9 +231,10 @@ export class NumbersManager {
   createSpreadsheet(
     filePath: string,
     headers: string[],
-    options?: { sheetName?: string; tableName?: string; rows?: unknown[][] }
+    options?: { sheetName?: string; tableName?: string; rows?: unknown[][]; overwrite?: boolean }
   ): CreateResult {
     const resolved = this.validateOutputPath(filePath);
+    this.assertWritable(resolved, options?.overwrite);
     const args = [resolved, JSON.stringify(headers)];
     if (options?.sheetName) args.push("--sheet-name", options.sheetName);
     if (options?.tableName) args.push("--table-name", options.tableName);
@@ -338,13 +366,19 @@ export class NumbersManager {
   importFile(
     inputPath: string,
     outputPath: string,
-    options?: { format?: "auto" | "csv" | "tsv" | "json"; sheetName?: string; tableName?: string }
+    options?: {
+      format?: "auto" | "csv" | "tsv" | "json";
+      sheetName?: string;
+      tableName?: string;
+      overwrite?: boolean;
+    }
   ): ImportResult {
     const inputResolved = this.resolveReadPath(inputPath);
     if (!existsSync(inputResolved)) {
       throw new Error(`Input file not found: ${inputResolved}`);
     }
     const outputResolved = this.validateOutputPath(outputPath);
+    this.assertWritable(outputResolved, options?.overwrite);
     const args = [inputResolved, outputResolved];
     if (options?.format && options.format !== "auto") args.push("--format", options.format);
     if (options?.sheetName) args.push("--sheet-name", options.sheetName);
