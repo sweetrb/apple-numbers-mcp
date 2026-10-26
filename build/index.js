@@ -37252,7 +37252,7 @@ function unmergeCells(filePath, sheet, table, startRow, startCol, endRow, endCol
 }
 
 // src/services/numbersManager.ts
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync2, lstatSync as lstatSync2 } from "node:fs";
 import { extname } from "node:path";
 
 // src/utils/exportPath.ts
@@ -37422,6 +37422,29 @@ var NumbersManager = class {
     return resolveWithinAllowedRoots(filePath, "Input path");
   }
   /**
+   * Refuse to replace an existing file unless the caller opted in.
+   *
+   * `export-table`, `create-spreadsheet` and `import-csv` used to overwrite
+   * whatever was at the destination, so a reused or mistyped path silently
+   * destroyed a real file — for the last two, a real spreadsheet. The roots
+   * boundary limits WHERE they write; this limits WHAT they replace. Checked on
+   * the resolved path with `lstat`, so a dangling symlink also counts as taken.
+   */
+  assertWritable(resolved, overwrite) {
+    if (overwrite) return;
+    let taken = false;
+    try {
+      lstatSync2(resolved);
+      taken = true;
+    } catch {
+    }
+    if (taken) {
+      throw new Error(
+        `Output file already exists: ${resolved}. Pass overwrite: true to replace it, or choose a new path.`
+      );
+    }
+  }
+  /**
    * Get file structure: sheets, tables, dimensions, headers.
    */
   getFileInfo(filePath) {
@@ -37459,9 +37482,10 @@ var NumbersManager = class {
   /**
    * Export a table to CSV, TSV, or JSON file.
    */
-  exportTable(filePath, format, outputPath, sheet, table) {
+  exportTable(filePath, format, outputPath, sheet, table, overwrite) {
     const resolved = this.validatePath(filePath);
     const outputResolved = this.resolveWritePath(outputPath);
+    this.assertWritable(outputResolved, overwrite);
     const args = [resolved, format, outputResolved];
     if (sheet) args.push("--sheet", sheet);
     if (table) args.push("--table", table);
@@ -37485,6 +37509,7 @@ var NumbersManager = class {
    */
   createSpreadsheet(filePath, headers, options) {
     const resolved = this.validateOutputPath(filePath);
+    this.assertWritable(resolved, options?.overwrite);
     const args = [resolved, JSON.stringify(headers)];
     if (options?.sheetName) args.push("--sheet-name", options.sheetName);
     if (options?.tableName) args.push("--table-name", options.tableName);
@@ -37580,6 +37605,7 @@ var NumbersManager = class {
       throw new Error(`Input file not found: ${inputResolved}`);
     }
     const outputResolved = this.validateOutputPath(outputPath);
+    this.assertWritable(outputResolved, options?.overwrite);
     const args = [inputResolved, outputResolved];
     if (options?.format && options.format !== "auto") args.push("--format", options.format);
     if (options?.sheetName) args.push("--sheet-name", options.sheetName);
@@ -38273,13 +38299,16 @@ ${lines.join("\n")}`, {
 registerTool(
   "export-table",
   {
-    description: "Use when: you want to write a table's data out to a CSV, TSV, or JSON file on disk. Defaults to the first sheet and first table if sheet/table are omitted.\nReturns: the exported row count, format, and output path.\nDo not use when: you want the data inline in the response rather than a file \u2014 use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source \u2014 use import-csv.\nSafety: writes a file to disk at outputPath. The path is written unconditionally \u2014 any existing file there is OVERWRITTEN \u2014 so confirm the destination before calling. outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a path under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
+    description: "Use when: you want to write a table's data out to a CSV, TSV, or JSON file on disk. Defaults to the first sheet and first table if sheet/table are omitted.\nReturns: the exported row count, format, and output path.\nDo not use when: you want the data inline in the response rather than a file \u2014 use read-table; or you want to build a new .numbers file from a CSV/TSV/JSON source \u2014 use import-csv.\nSafety: writes a file to disk at outputPath. An existing file at outputPath is refused unless overwrite is true; confirm with the user before passing it. outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a path under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
     inputSchema: {
       path: external_exports.string().describe("Path to the .numbers file"),
       format: external_exports.enum(["csv", "tsv", "json"]).describe("Output format"),
       outputPath: external_exports.string().describe("Path for the output file"),
       sheet: external_exports.string().optional().describe("Sheet name (default: first sheet)"),
-      table: external_exports.string().optional().describe("Table name (default: first table)")
+      table: external_exports.string().optional().describe("Table name (default: first table)"),
+      overwrite: external_exports.boolean().optional().describe(
+        "Replace an existing file at the destination (default: false \u2014 an existing file is refused)"
+      )
     },
     outputSchema: {
       outputPath: external_exports.string().optional(),
@@ -38289,8 +38318,8 @@ registerTool(
       tableName: external_exports.string().optional()
     }
   },
-  withErrorHandling(({ path, format, outputPath, sheet, table }) => {
-    const result = manager.exportTable(path, format, outputPath, sheet, table);
+  withErrorHandling(({ path, format, outputPath, sheet, table, overwrite }) => {
+    const result = manager.exportTable(path, format, outputPath, sheet, table, overwrite);
     return successResponse(
       `Exported ${result.rowCount} rows from "${result.sheetName}/${result.tableName}" to ${result.format.toUpperCase()}: ${result.outputPath}`,
       { ...result }
@@ -38337,13 +38366,16 @@ Merged: yes`;
 registerTool(
   "create-spreadsheet",
   {
-    description: "Use when: you want to create a brand-new .numbers file with a single sheet and table from a list of headers, optionally with initial data rows.\nReturns: the file path, sheet name, table name, header count, and data-row count.\nDo not use when: you want to build the file from an existing CSV/TSV/JSON source \u2014 use import-csv; or you want to add to a file that already exists \u2014 use add-sheet / add-table / add-rows.\nSafety: writes a .numbers file via the numbers-parser sidecar (does not require Numbers.app). The target path is written unconditionally \u2014 if a file already exists at that path it is OVERWRITTEN in place; choose a fresh path or confirm overwrite first. path must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a location under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
+    description: "Use when: you want to create a brand-new .numbers file with a single sheet and table from a list of headers, optionally with initial data rows.\nReturns: the file path, sheet name, table name, header count, and data-row count.\nDo not use when: you want to build the file from an existing CSV/TSV/JSON source \u2014 use import-csv; or you want to add to a file that already exists \u2014 use add-sheet / add-table / add-rows.\nSafety: writes a .numbers file via the numbers-parser sidecar (does not require Numbers.app). An existing file at path is refused unless overwrite is true; confirm with the user before passing it. path must resolve \u2014 after ~ expansion and symlink resolution \u2014 to a location under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.",
     inputSchema: {
       path: external_exports.string().describe("Path for the new .numbers file"),
       headers: external_exports.array(headerCellSchema).min(1).max(MAX_BATCH).describe("Column header names"),
       rows: external_exports.array(external_exports.array(external_exports.union([external_exports.string(), external_exports.number(), external_exports.boolean(), external_exports.null()]))).max(MAX_BATCH).optional().describe("Optional data rows (array of arrays)"),
       sheetName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
-      tableName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Table name (default: 'Table 1')")
+      tableName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Table name (default: 'Table 1')"),
+      overwrite: external_exports.boolean().optional().describe(
+        "Replace an existing file at the destination (default: false \u2014 an existing file is refused)"
+      )
     },
     outputSchema: {
       path: external_exports.string().optional(),
@@ -38353,8 +38385,13 @@ registerTool(
       numRows: external_exports.number().optional()
     }
   },
-  withErrorHandling(({ path, headers, rows, sheetName, tableName }) => {
-    const result = manager.createSpreadsheet(path, headers, { sheetName, tableName, rows });
+  withErrorHandling(({ path, headers, rows, sheetName, tableName, overwrite }) => {
+    const result = manager.createSpreadsheet(path, headers, {
+      sheetName,
+      tableName,
+      rows,
+      overwrite
+    });
     return successResponse(
       `Created ${result.path}
 Sheet: "${result.sheetName}" | Table: "${result.tableName}"
@@ -38543,13 +38580,16 @@ registerTool(
 registerTool(
   "import-csv",
   {
-    description: 'Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly; any unrecognized extension falls back to CSV. CSV/TSV fields are auto-typed (numbers, booleans, empty cells), so zero-padded identifiers LOSE their leading zeros \u2014 "01234" becomes 1234. JSON values are passed through untouched, but an array of objects takes its column set from the FIRST object only, silently dropping keys that appear later.\nReturns: the imported row and column counts, detected format, and the input/output paths plus sheet/table names.\nDo not use when: building a file from headers/rows you already have in hand \u2014 use create-spreadsheet; or exporting a .numbers table out to CSV/TSV/JSON \u2014 use export-table.\nSafety: writes the output .numbers file via the numbers-parser sidecar (does not require Numbers.app). The output path is written unconditionally \u2014 if a file already exists there it is OVERWRITTEN in place; choose a fresh output path or confirm overwrite first. Both inputPath and outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to locations under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.',
+    description: 'Use when: you want to convert an existing CSV, TSV, or JSON file into a new .numbers spreadsheet. Format is auto-detected from the input file extension unless you specify it explicitly; any unrecognized extension falls back to CSV. CSV/TSV fields are auto-typed (numbers, booleans, empty cells), so zero-padded identifiers LOSE their leading zeros \u2014 "01234" becomes 1234. JSON values are passed through untouched, but an array of objects takes its column set from the FIRST object only, silently dropping keys that appear later.\nReturns: the imported row and column counts, detected format, and the input/output paths plus sheet/table names.\nDo not use when: building a file from headers/rows you already have in hand \u2014 use create-spreadsheet; or exporting a .numbers table out to CSV/TSV/JSON \u2014 use export-table.\nSafety: writes the output .numbers file via the numbers-parser sidecar (does not require Numbers.app). An existing file at outputPath is refused unless overwrite is true; confirm with the user before passing it. Both inputPath and outputPath must resolve \u2014 after ~ expansion and symlink resolution \u2014 to locations under your home directory, /tmp, /private/tmp, or /Volumes; anything else is rejected with an error naming those roots.',
     inputSchema: {
       inputPath: external_exports.string().describe("Path to the CSV/TSV/JSON input file"),
       outputPath: external_exports.string().describe("Path for the output .numbers file"),
       format: external_exports.enum(["auto", "csv", "tsv", "json"]).optional().describe("Input format (default: auto-detect from extension)"),
       sheetName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Sheet name (default: 'Sheet 1')"),
-      tableName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Table name (default: 'Table 1')")
+      tableName: external_exports.string().max(MAX_NAME_LEN).optional().describe("Table name (default: 'Table 1')"),
+      overwrite: external_exports.boolean().optional().describe(
+        "Replace an existing file at the destination (default: false \u2014 an existing file is refused)"
+      )
     },
     outputSchema: {
       path: external_exports.string().optional(),
@@ -38561,8 +38601,13 @@ registerTool(
       numRows: external_exports.number().optional()
     }
   },
-  withErrorHandling(({ inputPath, outputPath, format, sheetName, tableName }) => {
-    const result = manager.importFile(inputPath, outputPath, { format, sheetName, tableName });
+  withErrorHandling(({ inputPath, outputPath, format, sheetName, tableName, overwrite }) => {
+    const result = manager.importFile(inputPath, outputPath, {
+      format,
+      sheetName,
+      tableName,
+      overwrite
+    });
     return successResponse(
       `Imported ${result.numRows} rows (${result.numHeaders} columns) from ${result.format.toUpperCase()}
 Input: ${result.inputPath}
