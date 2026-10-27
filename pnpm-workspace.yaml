@@ -63,7 +63,14 @@ overrides:
   # major) but is less explicit than stating the bound directly. A two-sided
   # range states both ends plainly and matches the convention used elsewhere
   # in this file (mail/notes) and below (brace-expansion, hono, js-yaml, qs).
-  "fast-uri": ">=3.1.7 <4"
+  #
+  # Raised to 3.1.9 for Dependabot alerts #40 (GHSA-333x-w4r6-6crp, low), #41
+  # (GHSA-wjr9-j795-jxcr, medium), #42 (GHSA-xhq7-xmqj-769h, low) and #43
+  # (GHSA-w74x-v6f9-j3xg, medium), all patched in 3.1.9. Same reachability and
+  # same conclusion as above: in the shipped bundle via ajv, so load-bearing.
+  # 3.1.9 published 2026-10-19T23:06Z and cleared the 7-day soak above at
+  # 2026-10-26T23:06Z. Still a two-sided range, for the reason recorded above.
+  "fast-uri": ">=3.1.9 <4"
   # GHSA-mwp4-54f8-5fhr (high), plus GHSA-4xrf-jv44-h6hh and
   # GHSA-22jq-vg5j-6vgg. Patched in 10.3.1; express-rate-limit (via
   # @modelcontextprotocol/sdk) caps it at 10.2.0. Not in the shipped bundle

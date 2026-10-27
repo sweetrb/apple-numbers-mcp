@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-27
+
+### Security
+
+- **`fast-uri` 3.1.8 → 3.1.9, clearing Dependabot alerts #40 (GHSA-333x-w4r6-6crp, low), #41 (GHSA-wjr9-j795-jxcr, medium), #42 (GHSA-xhq7-xmqj-769h, low) and #43 (GHSA-w74x-v6f9-j3xg, medium) — in the shipped bundle via ajv (pulled in through `@modelcontextprotocol/sdk`), so load-bearing.** All four patched in 3.1.9 (published 2026-10-19T23:06Z, past the 7-day `minimumReleaseAge` soak, which cleared 2026-10-26T23:06Z). `pnpm-workspace.yaml`'s two-sided override is raised to `>=3.1.9 <4`, matching the convention recorded there.
+
 ## [1.3.0] - 2026-10-26
 
 ### Changed (behaviour)
