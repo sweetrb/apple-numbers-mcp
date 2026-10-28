@@ -125,7 +125,10 @@ overrides:
   # 2026-08-29T23:50:15Z was held back by the minimumReleaseAge soak above
   # until 2026-09-05T23:50:15Z; floored here now that it has cleared, as a
   # caret range, never an exact pin, for the reason recorded on fast-uri above.
-  qs: ^6.16.0
+  # 2026-10-28: GHSA-6pq8-jhm2-2vcw (medium, qs.stringify arrayFormat 'comma' DoS),
+  # vulnerable <= 6.16.0, fixed in 6.16.1 (published 2026-10-14T22:06Z, past the
+  # 7-day soak). Floor raised from 6.16.0.
+  qs: ^6.16.1
   # GHSA (high, Dependabot alert #35): source-map-js, patched in 1.2.2
   # (published 2026-09-30T14:08Z, past the 7-day soak above). Reached only via
   # the test toolchain (vitest -> vite -> postcss, and @vitest/coverage-v8 ->
