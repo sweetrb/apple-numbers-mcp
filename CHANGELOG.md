@@ -1,7 +1,15 @@
 ## [Unreleased]
 
-## [1.3.5] - 2026-11-04
+## [1.3.6] - 2026-11-18
+
 ### Changed
+
+- **`numbers-parser` 4.22.0 → 4.22.2** (sidecar runtime pin, #120): upstream bug and security fixes. Checked against real spreadsheets: `info` and `read` return clean JSON on stdout.
+
+## [1.3.5] - 2026-11-04
+
+### Changed
+
 - Dependency bump via Dependabot; committed bundle rebuilt. (automated)
 
 ## [1.3.4] - 2026-10-29
