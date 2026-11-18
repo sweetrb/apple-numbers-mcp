@@ -1,1 +1,1 @@
-numbers-parser==4.22.0
+numbers-parser==4.22.2
